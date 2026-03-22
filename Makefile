@@ -1,7 +1,25 @@
 # ==============================================================================
-# pkg Makefile
+# yggdrasil-ecosystem Makefile
 
 .DEFAULT_GOAL := help
+
+# ==============================================================================
+# User-overridable project defaults
+# Variable assignment policy for this repository:
+#   ?= Public tunables callers may override via CLI/env/CI/root defaults:
+#      COVERAGE, TEST_FLAGS, TEST_TIMEOUT, MODULES*, INCLUDE_*,
+#      EXCLUDE_TESTS, SHELLCHECK_*, TOOLS, *_VERSION, CHANGELOG_*.
+#   := Internal derived values, path snapshots, and implementation details:
+#      ROOT_DIR, ALL_MODULES, MODULES_SELECTED, GO_IN_MODULE,
+#      COVERAGE_DIR, GOLANGCI_LINT_CONFIG, GOBIN, PATH, PRE_COMMIT_FILE.
+#   =  Intentional delayed-expansion wrappers/macros:
+#      LOG_INFO, LOG_WARN, LOG_ERROR, LOG_SUCCESS, and define/endef helpers.
+COVERAGE ?= 80
+TEST_FLAGS ?= -v -race -count=1
+TEST_TIMEOUT ?= 10m
+TEST_TAGS ?=
+
+# ==============================================================================
 
 # Include common.mk first (convention)
 include scripts/make-rules/common.mk
@@ -12,6 +30,9 @@ include scripts/make-rules/golang.mk
 include scripts/make-rules/copyright.mk
 include scripts/make-rules/precommit.mk
 include scripts/make-rules/tools.mk
+include scripts/make-rules/scripts.mk
+include scripts/make-rules/devx.mk
+include scripts/make-rules/changelog.mk
 
 
 # ==============================================================================
@@ -24,7 +45,10 @@ include scripts/make-rules/tools.mk
         fmt fmt.check lint fix \
         test test.race test.bench coverage \
         clean copyright tools sync help help.targets \
-        hooks.install hooks.verify hooks.run hooks.run-all hooks.clean
+        hooks.install hooks.verify hooks.run hooks.run-all hooks.clean \
+        doctor modules.print scripts.lint check.fast check \
+        changelog.init changelog changelog.preview changelog.verify \
+        changelog.state.print changelog.state.reset
 
 ## all: Run format, lint, and test
 all: fmt lint test
@@ -90,13 +114,33 @@ help:
 	@echo "  LOG_LEVEL=1       Show info, warn, error (default)"
 	@echo "  LOG_LEVEL=2       Show warn, error only"
 	@echo "  LOG_LEVEL=3       Show error only"
-	@echo "  COVERAGE=60       Set coverage threshold (default: 60%)"
-	@echo "  EXCLUDE_TESTS=    Pattern to exclude from tests (e.g., \"vendor|test\")"
-	@echo "  INCLUDE_EXAMPLES=1 Include example/examples modules in test & coverage"
-	@echo "  MODULES=...       Explicit module list (e.g., \"utils basic/xjwt\")"
+	@echo "  COVERAGE=$(COVERAGE) Set coverage threshold (default: $(COVERAGE)%)"
+	@echo "  TEST_FLAGS='$(TEST_FLAGS)' Additional flags passed to go test"
+	@echo "  TEST_TIMEOUT=$(TEST_TIMEOUT) Test timeout passed to go test"
+	@echo "  TEST_TAGS=...     Optional build tags passed to go test (e.g. integration for embedded/Docker-backed integration tests)"
+	@echo "  EXCLUDE_TESTS=    Regex for package dirs excluded in lint/fix (e.g., \"vendor|example\")"
+	@echo "  INCLUDE_GENERATED=1 Include generated Go files in fmt/lint/fix (default: 0)"
+	@echo "  INCLUDE_EXAMPLES=1 Include example/examples modules in lint/fix/test/coverage"
+	@echo "  MODULES=...       Explicit module list (e.g., \"utils basic/xjwt\"); explicit MODULES are never filtered by INCLUDE_EXAMPLES"
 	@echo "  MODULE_INCLUDE=... Filter modules to include (space-separated)"
 	@echo "  MODULE_EXCLUDE=... Filter modules to exclude (space-separated)"
 	@echo "  MODULES_DIR=basic Legacy shorthand base for go.*.<module> targets"
+	@echo "  SHELLCHECK_REQUIRED=1 Fail doctor/scripts.lint when shellcheck is missing"
+	@echo "  SHFMT_VERSION=...    Override shfmt tool install version"
+	@echo "  GIT_CHGLOG_VERSION=... Override git-chglog install version"
+	@echo "  CHANGELOG_QUERY=...  Explicit changelog query (tag/SHA range, e.g., v0.1.0..v0.2.0)"
+	@echo "  CHANGELOG_FROM=...   Changelog range start ref (tag/SHA, pairs with CHANGELOG_TO)"
+	@echo "  CHANGELOG_TO=...     Changelog range end ref (tag/SHA, pairs with CHANGELOG_FROM)"
+	@echo "  CHANGELOG_PATHS=...  Space-separated path filters for changelog commits"
+	@echo "  CHANGELOG_NEXT_TAG=... Fallback version label when no git tags (default: unreleased)"
+	@echo "  CHANGELOG_PROFILE=... simple|balanced|high-frequency (default: balanced)"
+	@echo "  CHANGELOG_CADENCE=... monthly|weekly|none (explicitly overrides profile)"
+	@echo "  CHANGELOG_USE_BASELINE=1 Use BASE_SHA incremental range in managed mode"
+	@echo "  CHANGELOG_ARCHIVE_ENABLE=1 Enable archive bucket rollover in managed mode"
+	@echo "  CHANGELOG_STATE_FILE=... Changelog state file path (default: .chglog/state.env)"
+	@echo "  CHANGELOG_ARCHIVE_DIR=... Archive section directory (default: .chglog/archive)"
+	@echo "  CHANGELOG_NOW=... Test-only time override (e.g., 2026-03-01)"
+	@echo "  CHANGELOG_STRICT_STATE=1 Fail when state file is malformed"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make help                     Show this help message"
@@ -105,16 +149,38 @@ help:
 	@echo "  make lint                     Run linters"
 	@echo "  make test                     Run tests"
 	@echo "  make coverage                 Run tests with coverage"
+	@echo "  make test TEST_TAGS=integration MODULES=\"integrations/etcd\""
+	@echo "                                Run integration-tagged etcd tests"
+	@echo "  make coverage TEST_TAGS=integration MODULES=\"integrations/etcd\""
+	@echo "                                Run integration-tagged etcd coverage"
+	@echo "  Docker-backed integration tests, if defined, still run via TEST_TAGS=integration"
+	@echo "  make check.fast               Run fmt.check + lint + test"
+	@echo "  make check                    Run full checks (check.fast + coverage + go.work.drift)"
 	@echo "  make test INCLUDE_EXAMPLES=1  Run tests including example modules"
 	@echo "  make coverage INCLUDE_EXAMPLES=1 Run coverage including example modules"
 	@echo "  make tools                    Install all required tools and pre-commit hooks"
+	@echo "  make scripts.lint             Lint shell scripts (bash -n + shfmt + optional shellcheck)"
+	@echo "  make doctor                   Run environment/tooling/hooks/workspace diagnostics"
+	@echo "  make modules.print            Print module discovery/selection context"
+	@echo "  make changelog.init           Initialize .chglog scaffold files/directories"
+	@echo "  make changelog                Generate CHANGELOG.md"
+	@echo "  make changelog.preview        Preview changelog in stdout"
+	@echo "  make changelog.verify         Verify CHANGELOG.md is up to date"
+	@echo "  make changelog.state.print    Print changelog profile/state/query context"
+	@echo "  make changelog.state.reset    Reset changelog baseline state to HEAD"
 	@echo "  make hooks.install            Install pre-commit hooks manually"
 	@echo "  make hooks.run                Run hooks on staged files"
 	@echo "  make hooks.run-all            Run hooks on all files"
 	@echo "  make copyright                Add copyright headers"
 	@echo "  make sync                     Sync go workspace"
+	@echo "  make go.work.drift            Check whether go.work is in sync with discovered modules"
 	@echo "  make MODULES=\"utils\" lint    Lint only utils module"
 	@echo "  make MODULE_EXCLUDE=\"basic/snowflake/examples\" test"
+	@echo "  make changelog.init && make changelog"
+	@echo "  make changelog CHANGELOG_FROM=v0.1.0 CHANGELOG_TO=v0.2.0"
+	@echo "  make changelog.preview CHANGELOG_PATHS=\"basic/xkafka\""
+	@echo "  make changelog CHANGELOG_PROFILE=high-frequency"
+	@echo "  make changelog.preview CHANGELOG_NOW=2026-03-01"
 	@echo ""
 	@echo "Module-specific targets:"
 	@echo "  make go.test.xjwt             Test xjwt (legacy shorthand)"

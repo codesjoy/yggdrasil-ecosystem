@@ -2,26 +2,21 @@
 # Makefile helper functions for golang
 #
 
-# Test flags
-TEST_FLAGS := -v -race -count=1
-TEST_TIMEOUT := 10m
+# Test flags (fallback defaults; repo defaults may be set in root Makefile)
+TEST_FLAGS ?= -v -race -count=1
+TEST_TIMEOUT ?= 10m
+TEST_TAGS ?=
 
-# Lint config
+GO_TEST_TAG_ARGS :=
+ifneq ($(strip $(TEST_TAGS)),)
+GO_TEST_TAG_ARGS := -tags=$(TEST_TAGS)
+endif
+
+# Lint config (single source of truth)
 GOLANGCI_LINT_CONFIG := $(ROOT_DIR)/.golangci.yaml
 
-# Exclude tests pattern (e.g., "vendor|test")
+# Optional regex for package directories excluded from lint/fix (e.g., "vendor|test")
 EXCLUDE_TESTS ?=
-
-# Example module filtering for tests/coverage.
-# By default, example modules are excluded from make test/make coverage.
-# Set INCLUDE_EXAMPLES=1 to include them.
-EXAMPLE_MODULE_PATTERNS ?= %/example %/examples
-INCLUDE_EXAMPLES ?= 0
-TEST_MODULES := $(MODULES)
-
-ifneq ($(strip $(INCLUDE_EXAMPLES)),1)
-TEST_MODULES := $(filter-out $(EXAMPLE_MODULE_PATTERNS),$(MODULES))
-endif
 
 # ==============================================================================
 # PHONY Targets
@@ -45,7 +40,7 @@ go.build:
 go.build.%:
 	@$(call resolve-module-path,$*); \
 	$(LOG_INFO) "Building $$module_path"; \
-	cd "$(ROOT_DIR)/$$module_path" && $(GO) build ./...
+	cd "$(ROOT_DIR)/$$module_path" && $(GO_IN_MODULE) build ./...
 
 ## go.build.multiarch: Build for multiple platforms
 go.build.multiarch:
@@ -63,7 +58,7 @@ go.install:
 go.install.%:
 	@$(call resolve-module-path,$*); \
 	$(LOG_INFO) "Installing $$module_path"; \
-	cd "$(ROOT_DIR)/$$module_path" && $(GO) install ./...
+	cd "$(ROOT_DIR)/$$module_path" && $(GO_IN_MODULE) install ./...
 
 # ==============================================================================
 # Format Targets
@@ -114,8 +109,9 @@ go.fmt.golines:
 
 ## go.fmt.check: Check if code is formatted (CI gate)
 go.fmt.check:
+	@$(call require-tool,$(GOFUMPT))
 	@$(LOG_INFO) "Checking code formatting"
-	@unformatted=$$($(GOFUMPT) -l . 2>/dev/null | grep -v vendor); \
+	@unformatted=$$($(call find-go-files,.,vendor) -exec $(GOFUMPT) -l {} + 2>/dev/null); \
 	if [ -n "$$unformatted" ]; then \
 		echo "Code is not formatted. Run 'make fmt'"; \
 		echo "$$unformatted"; \
@@ -130,14 +126,14 @@ go.fmt.check:
 # Features:
 #   - Multi-module support: Lints all discovered go.mod modules
 #   - Auto-fix: make fix applies automatic fixes where possible
-#   - Configurable exclusions: Use EXCLUDE_TESTS= to skip specific patterns
+#   - Configurable exclusions: Use EXCLUDE_TESTS= to skip package directories by regex
 #   - Custom configuration: Edit .golangci.yaml to enable/disable linters
 #
 # Usage:
 #   make lint                          - Run all linters across all modules
 #   make fix                           - Run linters with auto-fix enabled
 #   make go.lint.<module>              - Lint specific module
-#   make lint EXCLUDE_TESTS="vendor"   - Exclude patterns from linting
+#   make lint EXCLUDE_TESTS="vendor|example" - Exclude package directory regexes from linting
 #
 # CI Integration:
 #   - Use 'make lint' in CI/CD pipelines as a quality gate
@@ -152,6 +148,7 @@ go.fmt.check:
 
 ## go.lint.ensure-compatible: Ensure golangci-lint is built with compatible Go version
 go.lint.ensure-compatible:
+	@$(call require-tool,$(GOLANGCI_LINT))
 	@$(LOG_INFO) "Checking golangci-lint Go version compatibility"
 	@current_go_version=$$($(GO) version | awk '{print $$3}' | sed 's/go//'); \
 	current_major=$$(echo $$current_go_version | cut -d. -f1); \
@@ -177,38 +174,95 @@ go.lint.%:
 	@$(call require-file,$(GOLANGCI_LINT_CONFIG))
 	@$(call resolve-module-path,$*); \
 	$(LOG_INFO) "Linting $$module_path"; \
-	cd "$(ROOT_DIR)/$$module_path" && $(GOLANGCI_LINT) run --config=$(GOLANGCI_LINT_CONFIG) ./...
+	cd "$(ROOT_DIR)/$$module_path" || exit 1; \
+	lint_config="$(GOLANGCI_LINT_CONFIG)"; \
+	lint_config_tmp_dir=""; \
+	if [ "$(strip $(INCLUDE_GENERATED))" = "1" ]; then \
+		lint_config_tmp_dir=$$(mktemp -d); \
+		lint_config_tmp="$$lint_config_tmp_dir/golangci.yaml"; \
+		sed 's/generated: strict/generated: disable/g' "$(GOLANGCI_LINT_CONFIG)" > "$$lint_config_tmp"; \
+		lint_config="$$lint_config_tmp"; \
+	fi; \
+	cleanup() { \
+		if [ -n "$$lint_config_tmp_dir" ]; then rm -rf "$$lint_config_tmp_dir"; fi; \
+	}; \
+	trap cleanup EXIT; \
+	GOWORK=off $(GOLANGCI_LINT) run --config="$$lint_config" ./...
 
 ## go.lint.check: Check all modules
 go.lint.check:
 	@$(call require-tool,$(GOLANGCI_LINT))
 	@$(call require-file,$(GOLANGCI_LINT_CONFIG))
+	$(call validate-module-selection,$(MODULES))
 	@$(LOG_INFO) "Running linters"
 	@source $(ROOT_DIR)/scripts/lib/logger.sh >/dev/null 2>&1; \
+	lint_config="$(GOLANGCI_LINT_CONFIG)"; \
+	lint_config_tmp_dir=""; \
+	if [ "$(strip $(INCLUDE_GENERATED))" = "1" ]; then \
+		lint_config_tmp_dir=$$(mktemp -d); \
+		lint_config_tmp="$$lint_config_tmp_dir/golangci.yaml"; \
+		sed 's/generated: strict/generated: disable/g' "$(GOLANGCI_LINT_CONFIG)" > "$$lint_config_tmp"; \
+		lint_config="$$lint_config_tmp"; \
+	fi; \
+	cleanup() { \
+		if [ -n "$$lint_config_tmp_dir" ]; then rm -rf "$$lint_config_tmp_dir"; fi; \
+	}; \
+	trap cleanup EXIT; \
 	for module in $(MODULES); do \
 		log::info "$$module"; \
 		cd "$(ROOT_DIR)/$$module" || exit 1; \
+		lint_targets=$$(GOWORK=off $(GO) list -f '{{.Dir}}' ./... | sed '/^$$/d'); \
 		if [ -n "$(EXCLUDE_TESTS)" ]; then \
-			$(GOLANGCI_LINT) run --config=$(GOLANGCI_LINT_CONFIG) --exclude="$(EXCLUDE_TESTS)" ./... || exit 1; \
-		else \
-			$(GOLANGCI_LINT) run --config=$(GOLANGCI_LINT_CONFIG) ./... || exit 1; \
+			lint_targets=$$(printf "%s\n" "$$lint_targets" | grep -Ev "$(EXCLUDE_TESTS)" || true); \
+			lint_targets=$$(printf "%s\n" "$$lint_targets" | sed '/^$$/d'); \
 		fi; \
+		if [ -z "$$lint_targets" ]; then \
+			if [ -n "$(EXCLUDE_TESTS)" ]; then \
+				log::warn "$$module has no packages after EXCLUDE_TESTS filter ($(EXCLUDE_TESTS)), skipping"; \
+			else \
+				log::warn "$$module has no packages to lint, skipping"; \
+			fi; \
+			continue; \
+		fi; \
+		GOWORK=off $(GOLANGCI_LINT) run --config="$$lint_config" $$lint_targets || exit 1; \
 	done
 
 ## go.fix: Run linters with auto-fix
 go.fix: go.lint.ensure-compatible
 	@$(call require-tool,$(GOLANGCI_LINT))
 	@$(call require-file,$(GOLANGCI_LINT_CONFIG))
+	$(call validate-module-selection,$(MODULES))
 	@$(LOG_INFO) "Running linters with auto-fix"
 	@source $(ROOT_DIR)/scripts/lib/logger.sh >/dev/null 2>&1; \
+	lint_config="$(GOLANGCI_LINT_CONFIG)"; \
+	lint_config_tmp_dir=""; \
+	if [ "$(strip $(INCLUDE_GENERATED))" = "1" ]; then \
+		lint_config_tmp_dir=$$(mktemp -d); \
+		lint_config_tmp="$$lint_config_tmp_dir/golangci.yaml"; \
+		sed 's/generated: strict/generated: disable/g' "$(GOLANGCI_LINT_CONFIG)" > "$$lint_config_tmp"; \
+		lint_config="$$lint_config_tmp"; \
+	fi; \
+	cleanup() { \
+		if [ -n "$$lint_config_tmp_dir" ]; then rm -rf "$$lint_config_tmp_dir"; fi; \
+	}; \
+	trap cleanup EXIT; \
 	for module in $(MODULES); do \
 		log::info "$$module"; \
 		cd "$(ROOT_DIR)/$$module" || exit 1; \
+		lint_targets=$$(GOWORK=off $(GO) list -f '{{.Dir}}' ./... | sed '/^$$/d'); \
 		if [ -n "$(EXCLUDE_TESTS)" ]; then \
-			$(GOLANGCI_LINT) run --config=$(GOLANGCI_LINT_CONFIG) --fix --exclude="$(EXCLUDE_TESTS)" ./... || exit 1; \
-		else \
-			$(GOLANGCI_LINT) run --config=$(GOLANGCI_LINT_CONFIG) --fix ./... || exit 1; \
+			lint_targets=$$(printf "%s\n" "$$lint_targets" | grep -Ev "$(EXCLUDE_TESTS)" || true); \
+			lint_targets=$$(printf "%s\n" "$$lint_targets" | sed '/^$$/d'); \
 		fi; \
+		if [ -z "$$lint_targets" ]; then \
+			if [ -n "$(EXCLUDE_TESTS)" ]; then \
+				log::warn "$$module has no packages after EXCLUDE_TESTS filter ($(EXCLUDE_TESTS)), skipping"; \
+			else \
+				log::warn "$$module has no packages to lint-fix, skipping"; \
+			fi; \
+			continue; \
+		fi; \
+		GOWORK=off $(GOLANGCI_LINT) run --config="$$lint_config" --fix $$lint_targets || exit 1; \
 	done
 
 ## go.fix.%: Fix specific module
@@ -217,7 +271,20 @@ go.fix.%:
 	@$(call require-file,$(GOLANGCI_LINT_CONFIG))
 	@$(call resolve-module-path,$*); \
 	$(LOG_INFO) "Fixing $$module_path"; \
-	cd "$(ROOT_DIR)/$$module_path" && $(GOLANGCI_LINT) run --config=$(GOLANGCI_LINT_CONFIG) --fix ./...
+	cd "$(ROOT_DIR)/$$module_path" || exit 1; \
+	lint_config="$(GOLANGCI_LINT_CONFIG)"; \
+	lint_config_tmp_dir=""; \
+	if [ "$(strip $(INCLUDE_GENERATED))" = "1" ]; then \
+		lint_config_tmp_dir=$$(mktemp -d); \
+		lint_config_tmp="$$lint_config_tmp_dir/golangci.yaml"; \
+		sed 's/generated: strict/generated: disable/g' "$(GOLANGCI_LINT_CONFIG)" > "$$lint_config_tmp"; \
+		lint_config="$$lint_config_tmp"; \
+	fi; \
+	cleanup() { \
+		if [ -n "$$lint_config_tmp_dir" ]; then rm -rf "$$lint_config_tmp_dir"; fi; \
+	}; \
+	trap cleanup EXIT; \
+	GOWORK=off $(GOLANGCI_LINT) run --config="$$lint_config" --fix ./...
 
 # ==============================================================================
 # Test Targets
@@ -244,7 +311,7 @@ go.fix.%:
 # Test Configuration:
 #   - TEST_FLAGS:           Additional flags (default: -v -race -count=1)
 #   - TEST_TIMEOUT:         Test timeout (default: 10m)
-#   - EXCLUDE_TESTS:        Pattern to exclude from tests
+#   - EXCLUDE_TESTS:        Regex to exclude package dirs from lint/fix
 #
 # Examples:
 #   make test                      Run all unit tests
@@ -259,20 +326,22 @@ go.test: go.test.unit
 
 ## go.test.unit: Run unit tests
 go.test.unit:
+	$(call validate-module-selection,$(MODULES))
 	@$(LOG_INFO) "Running unit tests"
 	@source $(ROOT_DIR)/scripts/lib/logger.sh >/dev/null 2>&1; \
-	for module in $(TEST_MODULES); do \
+	for module in $(MODULES); do \
 		log::info "$$module"; \
-		cd "$(ROOT_DIR)/$$module" && $(GO) test $(TEST_FLAGS) -timeout=$(TEST_TIMEOUT) ./... || exit 1; \
+		cd "$(ROOT_DIR)/$$module" && $(GO_IN_MODULE) test $(GO_TEST_TAG_ARGS) $(TEST_FLAGS) -timeout=$(TEST_TIMEOUT) ./... || exit 1; \
 	done
 
 ## go.test.race: Run tests with race detector
 go.test.race:
+	$(call validate-module-selection,$(MODULES))
 	@$(LOG_INFO) "Running tests with race detector"
 	@source $(ROOT_DIR)/scripts/lib/logger.sh >/dev/null 2>&1; \
-	for module in $(TEST_MODULES); do \
+	for module in $(MODULES); do \
 		log::info "$$module"; \
-		cd "$(ROOT_DIR)/$$module" && $(GO) test -race -timeout=$(TEST_TIMEOUT) ./... || exit 1; \
+		cd "$(ROOT_DIR)/$$module" && $(GO_IN_MODULE) test $(GO_TEST_TAG_ARGS) -race -timeout=$(TEST_TIMEOUT) ./... || exit 1; \
 	done
 
 ## go.test.coverage: Run tests with coverage quality gate
@@ -284,10 +353,15 @@ go.test.coverage.%: | $(COVERAGE_DIR)
 	@$(call resolve-module-path,$*); \
 	module_file=$$(echo "$$module_path" | tr '/' '_'); \
 	$(LOG_INFO) "Coverage for $$module_path"; \
+	test_pkgs=$$(cd "$(ROOT_DIR)/$$module_path" && $(GO_IN_MODULE) list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | sed '/^$$/d'); \
+	if [ -z "$$test_pkgs" ]; then \
+		$(LOG_WARN) "$$module_path has no test packages, skipping coverage profile"; \
+		exit 0; \
+	fi; \
 	cd "$(ROOT_DIR)/$$module_path" && \
-		$(GO) test -coverprofile=$(COVERAGE_DIR)/$$module_file.out -covermode=atomic ./... && \
-		$(GO) tool cover -html=$(COVERAGE_DIR)/$$module_file.out -o $(COVERAGE_DIR)/$$module_file.html && \
-		$(GO) tool cover -func=$(COVERAGE_DIR)/$$module_file.out | tail -1
+		$(GO_IN_MODULE) test $(GO_TEST_TAG_ARGS) -coverprofile=$(COVERAGE_DIR)/$$module_file.out -covermode=atomic $$test_pkgs && \
+		GOWORK=off $(GO) tool cover -html=$(COVERAGE_DIR)/$$module_file.out -o $(COVERAGE_DIR)/$$module_file.html && \
+		GOWORK=off $(GO) tool cover -func=$(COVERAGE_DIR)/$$module_file.out | tail -1
 
 # Directory creation rule (order-only prerequisite)
 $(COVERAGE_DIR):
@@ -295,25 +369,37 @@ $(COVERAGE_DIR):
 
 ## go.test.coverage.all: Generate coverage for all modules
 go.test.coverage.all: | $(COVERAGE_DIR)
+	$(call validate-module-selection,$(MODULES))
 	@$(LOG_INFO) "Generating coverage for all modules"
+	@$(RM) $(COVERAGE_DIR)/*.out $(COVERAGE_DIR)/*.html 2>/dev/null || true
 	@source $(ROOT_DIR)/scripts/lib/logger.sh >/dev/null 2>&1; \
-	for module in $(TEST_MODULES); do \
+	for module in $(MODULES); do \
 		module_file=$$(echo "$$module" | tr '/' '_'); \
 		log::info "$$module"; \
+		test_pkgs=$$(cd "$(ROOT_DIR)/$$module" && $(GO_IN_MODULE) list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | sed '/^$$/d'); \
+		if [ -z "$$test_pkgs" ]; then \
+			log::warn "$$module has no test packages, skipping coverage profile"; \
+			continue; \
+		fi; \
 		cd "$(ROOT_DIR)/$$module" && \
-		$(GO) test -coverprofile=$(COVERAGE_DIR)/$$module_file.out -covermode=atomic ./... || exit 1; \
-		$(GO) tool cover -html=$(COVERAGE_DIR)/$$module_file.out -o $(COVERAGE_DIR)/$$module_file.html; \
+		$(GO_IN_MODULE) test $(GO_TEST_TAG_ARGS) -coverprofile=$(COVERAGE_DIR)/$$module_file.out -covermode=atomic $$test_pkgs || exit 1; \
+		GOWORK=off $(GO) tool cover -html=$(COVERAGE_DIR)/$$module_file.out -o $(COVERAGE_DIR)/$$module_file.html; \
 	done
 	@$(LOG_SUCCESS) "Coverage reports: $(COVERAGE_DIR)"
 
 ## go.test.coverage.check: Check coverage against quality gate
 go.test.coverage.check: | $(COVERAGE_DIR)
+	$(call validate-module-selection,$(MODULES))
 	@$(LOG_INFO) "Checking coverage quality gate (target: $(COVERAGE)%)"
-	@for module in $(TEST_MODULES); do \
+	@set -o pipefail; \
+	for module in $(MODULES); do \
 		module_file=$$(echo "$$module" | tr '/' '_'); \
-		cd "$(ROOT_DIR)/$$module" && \
-		$(GO) test -coverprofile=$(COVERAGE_DIR)/$$module_file.out -covermode=atomic ./... && \
-		$(GO) tool cover -func=$(COVERAGE_DIR)/$$module_file.out | grep -E "^total:" | \
+		profile_file="$(COVERAGE_DIR)/$$module_file.out"; \
+		if [ ! -f "$$profile_file" ]; then \
+			$(LOG_WARN) "$$module has no coverage profile, skipping quality gate"; \
+			continue; \
+		fi; \
+		cd "$(ROOT_DIR)/$$module" && GOWORK=off $(GO) tool cover -func=$$profile_file | grep -E "^total:" | \
 		awk -v target=$(COVERAGE) -f $(ROOT_DIR)/scripts/coverage.awk || exit 1; \
 	done
 	@$(LOG_SUCCESS) "Coverage quality gate passed!"
@@ -322,9 +408,9 @@ go.test.coverage.check: | $(COVERAGE_DIR)
 go.test.%:
 	@$(call resolve-module-path,$*); \
 	$(LOG_INFO) "Testing $$module_path"; \
-	cd "$(ROOT_DIR)/$$module_path" && $(GO) test $(TEST_FLAGS) -timeout=$(TEST_TIMEOUT) ./...
+	cd "$(ROOT_DIR)/$$module_path" && $(GO_IN_MODULE) test $(GO_TEST_TAG_ARGS) $(TEST_FLAGS) -timeout=$(TEST_TIMEOUT) ./...
 
 ## go.test.bench: Run benchmarks
 go.test.bench:
 	@$(LOG_INFO) "Running benchmarks"
-	$(call iterate-modules-log,$(GO) test -bench=. -benchmem -timeout=$(TEST_TIMEOUT) ./...)
+	$(call iterate-modules-log,$(GO_IN_MODULE) test -bench=. -benchmem -timeout=$(TEST_TIMEOUT) ./...)

@@ -24,9 +24,21 @@ Use the root `Makefile` for all routine workflows:
 - Shell scripts should be Bash with strict mode (`errexit`, `nounset`, `pipefail`).
 
 ## Testing Guidelines
-- Place tests alongside code in `*_test.go` files.
+- Place unit tests alongside code in `*_test.go` files.
+- Place package-level integration tests alongside code in
+  `*_integration_test.go` files and mark them with both
+  `//go:build integration` and `// +build integration`.
+- Use `<module>/test/integration/` only for module-level black-box integration
+  tests that intentionally exercise public behavior across packages.
+- Prefer embedded or in-process dependencies for package-level integration
+  tests; use local Docker only when the scenario genuinely needs a real service,
+  multi-process topology, or compatibility validation.
+- Keep any Docker-backed test behind the `integration` build tag and document
+  the startup/cleanup steps in the module README or nearby test notes.
 - Use `testing` package conventions: `TestXxx` names and table-driven `t.Run(...)` subtests where useful.
 - Run `make test` before pushing; run `make coverage` for behavior-heavy changes.
+- Run `make test TEST_TAGS=integration MODULES="..."` when changing
+  integration-tagged behavior.
 - Add or update example tests only when example behavior or docs change.
 
 ## Commit & Pull Request Guidelines
