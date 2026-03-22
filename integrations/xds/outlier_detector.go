@@ -17,28 +17,27 @@ package xds
 import (
 	"context"
 	"log/slog"
-	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-// HealthStatus represents the health status of an endpoint
+// HealthStatus represents the health status of an endpoint.
 type HealthStatus int
 
 const (
-	// HealthUnknown indicates health status is unknown
+	// HealthUnknown indicates health status is unknown.
 	HealthUnknown HealthStatus = iota
-	// HealthHealthy indicates endpoint is healthy
+	// HealthHealthy indicates endpoint is healthy.
 	HealthHealthy
-	// HealthUnhealthy indicates endpoint is unhealthy
+	// HealthUnhealthy indicates endpoint is unhealthy.
 	HealthUnhealthy
-	// HealthDraining indicates endpoint is draining
+	// HealthDraining indicates endpoint is draining.
 	HealthDraining
-	// HealthTimeout indicates endpoint has timed out
+	// HealthTimeout indicates endpoint has timed out.
 	HealthTimeout
-	// HealthDegraded indicates endpoint is degraded
+	// HealthDegraded indicates endpoint is degraded.
 	HealthDegraded
 )
 
@@ -59,7 +58,7 @@ func (h HealthStatus) String() string {
 	}
 }
 
-// ParseHealthStatus parses a health status string
+// ParseHealthStatus parses a health status string.
 func ParseHealthStatus(s string) HealthStatus {
 	switch strings.ToUpper(s) {
 	case "HEALTHY":
@@ -77,7 +76,7 @@ func ParseHealthStatus(s string) HealthStatus {
 	}
 }
 
-// OutlierDetectionConfig holds outlier detection configuration
+// OutlierDetectionConfig holds outlier detection configuration.
 type OutlierDetectionConfig struct {
 	Consecutive5xx                 uint32
 	ConsecutiveGatewayFailure      uint32
@@ -98,7 +97,7 @@ type OutlierDetectionConfig struct {
 	SplitExternalLocalOriginErrors bool
 }
 
-// DefaultOutlierDetectionConfig returns default outlier detection configuration
+// DefaultOutlierDetectionConfig returns default outlier detection configuration.
 func DefaultOutlierDetectionConfig() *OutlierDetectionConfig {
 	return &OutlierDetectionConfig{
 		Consecutive5xx:                 5,
@@ -112,7 +111,7 @@ func DefaultOutlierDetectionConfig() *OutlierDetectionConfig {
 		EnforcingSuccessRate:           100,
 		SuccessRateMinimumHosts:        5,
 		SuccessRateRequestVolume:       100,
-		SuccessRateStdevFactor:         1900, // 1.9 * 1000
+		SuccessRateStdevFactor:         1900,
 		FailurePercentageThreshold:     85,
 		EnforcingFailurePercentage:     0,
 		FailurePercentageMinimumHosts:  5,
@@ -121,23 +120,20 @@ func DefaultOutlierDetectionConfig() *OutlierDetectionConfig {
 	}
 }
 
-// EndpointStats tracks statistics for a single endpoint
+// EndpointStats tracks statistics for a single endpoint.
 type EndpointStats struct {
 	address string
 
-	// Request counters
 	totalRequests   uint64
 	successCount    uint64
 	failureCount    uint64
 	localFailures   uint64
 	gatewayFailures uint64
 
-	// Consecutive error tracking
 	consecutive5xx            uint32
 	consecutiveGatewayFailure uint32
 	consecutiveLocalFailure   uint32
 
-	// Ejection state
 	ejected       bool
 	ejectionTime  time.Time
 	ejectionCount uint32
@@ -145,7 +141,7 @@ type EndpointStats struct {
 	mu sync.RWMutex
 }
 
-// OutlierDetector implements error-rate based outlier detection
+// OutlierDetector implements error-rate based outlier detection.
 type OutlierDetector struct {
 	config    *OutlierDetectionConfig
 	endpoints map[string]*EndpointStats
@@ -155,18 +151,16 @@ type OutlierDetector struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	// Statistics
 	totalEjections uint64
 }
 
-// NewOutlierDetector creates a new outlier detector
+// NewOutlierDetector creates a new outlier detector.
 func NewOutlierDetector(config *OutlierDetectionConfig) *OutlierDetector {
 	if config == nil {
 		config = DefaultOutlierDetectionConfig()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-
 	return &OutlierDetector{
 		config:    config,
 		endpoints: make(map[string]*EndpointStats),
@@ -175,7 +169,7 @@ func NewOutlierDetector(config *OutlierDetectionConfig) *OutlierDetector {
 	}
 }
 
-// Start begins periodic health check sweeps
+// Start begins periodic health check sweeps.
 func (od *OutlierDetector) Start() {
 	if od.config.Interval == 0 {
 		return
@@ -183,19 +177,16 @@ func (od *OutlierDetector) Start() {
 
 	od.wg.Add(1)
 	go od.runHealthSweep()
-
-	slog.Info("outlier detector started",
-		"interval", od.config.Interval)
+	slog.Info("outlier detector started", "interval", od.config.Interval)
 }
 
-// Stop stops the outlier detector
+// Stop stops the outlier detector.
 func (od *OutlierDetector) Stop() {
 	od.cancel()
 	od.wg.Wait()
 	slog.Info("outlier detector stopped")
 }
 
-// runHealthSweep runs periodic health check sweeps
 func (od *OutlierDetector) runHealthSweep() {
 	defer od.wg.Done()
 
@@ -212,34 +203,43 @@ func (od *OutlierDetector) runHealthSweep() {
 	}
 }
 
-// performHealthSweep performs a health check sweep
 func (od *OutlierDetector) performHealthSweep() {
+	endpoints := od.snapshotEndpoints()
+	od.recoverEndpoints(endpoints, time.Now())
+	od.detectSuccessRateOutliers(endpoints)
+	od.detectFailurePercentageOutliers(endpoints)
+	od.resetIntervalStats(endpoints)
+}
+
+func (od *OutlierDetector) snapshotEndpoints() []*EndpointStats {
 	od.mu.RLock()
+	defer od.mu.RUnlock()
+
 	endpoints := make([]*EndpointStats, 0, len(od.endpoints))
 	for _, ep := range od.endpoints {
 		endpoints = append(endpoints, ep)
 	}
-	od.mu.RUnlock()
+	return endpoints
+}
 
-	now := time.Now()
-
-	// Check for recovery (uneject endpoints whose ejection time has expired)
+func (od *OutlierDetector) recoverEndpoints(endpoints []*EndpointStats, now time.Time) {
 	for _, ep := range endpoints {
 		ep.mu.Lock()
 		if ep.ejected && now.After(ep.ejectionTime) {
 			ep.ejected = false
-			slog.Info("endpoint recovered from ejection",
-				"endpoint", ep.address,
-				"ejectionCount", ep.ejectionCount)
+			slog.Info(
+				"endpoint recovered from ejection",
+				"endpoint",
+				ep.address,
+				"ejectionCount",
+				ep.ejectionCount,
+			)
 		}
 		ep.mu.Unlock()
 	}
+}
 
-	// Perform outlier detection
-	od.detectSuccessRateOutliers(endpoints)
-	od.detectFailurePercentageOutliers(endpoints)
-
-	// Reset interval statistics
+func (od *OutlierDetector) resetIntervalStats(endpoints []*EndpointStats) {
 	for _, ep := range endpoints {
 		ep.mu.Lock()
 		ep.totalRequests = 0
@@ -251,289 +251,80 @@ func (od *OutlierDetector) performHealthSweep() {
 	}
 }
 
-// ReportResult reports request result for outlier detection
+// ReportResult reports request result for outlier detection.
 func (od *OutlierDetector) ReportResult(endpoint string, err error, statusCode int) {
-	od.mu.Lock()
-	ep, exists := od.endpoints[endpoint]
-	if !exists {
-		ep = &EndpointStats{
-			address: endpoint,
-		}
-		od.endpoints[endpoint] = ep
-	}
-	od.mu.Unlock()
-
+	ep := od.endpointStats(endpoint)
 	ep.mu.Lock()
-	defer ep.mu.Unlock()
+	reasons := od.recordEndpointResultLocked(ep, err, statusCode)
+	ep.mu.Unlock()
 
+	for _, reason := range reasons {
+		od.ejectEndpoint(ep, reason)
+	}
+}
+
+func (od *OutlierDetector) endpointStats(endpoint string) *EndpointStats {
+	od.mu.Lock()
+	defer od.mu.Unlock()
+
+	if ep, ok := od.endpoints[endpoint]; ok {
+		return ep
+	}
+
+	ep := &EndpointStats{address: endpoint}
+	od.endpoints[endpoint] = ep
+	return ep
+}
+
+func (od *OutlierDetector) recordEndpointResultLocked(
+	ep *EndpointStats,
+	err error,
+	statusCode int,
+) []string {
 	atomic.AddUint64(&ep.totalRequests, 1)
 
-	isSuccess := err == nil && statusCode >= 200 && statusCode < 500
-	is5xx := statusCode >= 500 && statusCode < 600
-	isGatewayFailure := statusCode == 502 || statusCode == 503 || statusCode == 504
-	isLocalFailure := err != nil
-
-	if isSuccess {
+	if err == nil && statusCode >= 200 && statusCode < 500 {
 		atomic.AddUint64(&ep.successCount, 1)
-		// Reset consecutive error counters on success
 		ep.consecutive5xx = 0
 		ep.consecutiveGatewayFailure = 0
 		ep.consecutiveLocalFailure = 0
-	} else {
-		atomic.AddUint64(&ep.failureCount, 1)
+		return nil
+	}
 
-		// Track consecutive errors
-		if is5xx {
-			ep.consecutive5xx++
-			od.checkConsecutive5xx(ep)
-		}
-
-		if isGatewayFailure {
-			atomic.AddUint64(&ep.gatewayFailures, 1)
-			ep.consecutiveGatewayFailure++
-			od.checkConsecutiveGatewayFailure(ep)
-		}
-
-		if isLocalFailure {
-			atomic.AddUint64(&ep.localFailures, 1)
-			ep.consecutiveLocalFailure++
-			od.checkConsecutiveLocalFailure(ep)
+	var reasons []string
+	atomic.AddUint64(&ep.failureCount, 1)
+	if statusCode >= 500 && statusCode < 600 {
+		ep.consecutive5xx++
+		if od.shouldEjectConsecutive(
+			ep.consecutive5xx,
+			od.config.Consecutive5xx,
+			od.config.EnforcingConsecutive5xx,
+		) {
+			reasons = append(reasons, "consecutive_5xx")
 		}
 	}
-}
-
-// checkConsecutive5xx checks for consecutive 5xx errors
-func (od *OutlierDetector) checkConsecutive5xx(ep *EndpointStats) {
-	if od.config.Consecutive5xx == 0 || od.config.EnforcingConsecutive5xx == 0 {
-		return
-	}
-
-	if ep.consecutive5xx >= od.config.Consecutive5xx {
-		if od.shouldEnforce(od.config.EnforcingConsecutive5xx) {
-			od.ejectEndpoint(ep, "consecutive_5xx")
+	if statusCode == 502 || statusCode == 503 || statusCode == 504 {
+		atomic.AddUint64(&ep.gatewayFailures, 1)
+		ep.consecutiveGatewayFailure++
+		if od.shouldEjectConsecutive(
+			ep.consecutiveGatewayFailure,
+			od.config.ConsecutiveGatewayFailure,
+			od.config.EnforcingConsecutive5xx,
+		) {
+			reasons = append(reasons, "consecutive_gateway_failure")
 		}
 	}
-}
-
-// checkConsecutiveGatewayFailure checks for consecutive gateway failures
-func (od *OutlierDetector) checkConsecutiveGatewayFailure(ep *EndpointStats) {
-	if od.config.ConsecutiveGatewayFailure == 0 {
-		return
-	}
-
-	if ep.consecutiveGatewayFailure >= od.config.ConsecutiveGatewayFailure {
-		if od.shouldEnforce(od.config.EnforcingConsecutive5xx) {
-			od.ejectEndpoint(ep, "consecutive_gateway_failure")
-		}
-	}
-}
-
-// checkConsecutiveLocalFailure checks for consecutive local failures
-func (od *OutlierDetector) checkConsecutiveLocalFailure(ep *EndpointStats) {
-	if od.config.ConsecutiveLocalOriginFailure == 0 {
-		return
-	}
-
-	if ep.consecutiveLocalFailure >= od.config.ConsecutiveLocalOriginFailure {
-		if od.shouldEnforce(od.config.EnforcingConsecutive5xx) {
-			od.ejectEndpoint(ep, "consecutive_local_failure")
-		}
-	}
-}
-
-// detectSuccessRateOutliers detects outliers based on success rate
-func (od *OutlierDetector) detectSuccessRateOutliers(endpoints []*EndpointStats) {
-	if od.config.EnforcingSuccessRate == 0 {
-		return
-	}
-
-	// Filter endpoints with sufficient request volume
-	var validEndpoints []*EndpointStats
-	for _, ep := range endpoints {
-		ep.mu.RLock()
-		total := atomic.LoadUint64(&ep.totalRequests)
-		ep.mu.RUnlock()
-
-		if total >= uint64(od.config.SuccessRateRequestVolume) {
-			validEndpoints = append(validEndpoints, ep)
+	if err != nil {
+		atomic.AddUint64(&ep.localFailures, 1)
+		ep.consecutiveLocalFailure++
+		if od.shouldEjectConsecutive(
+			ep.consecutiveLocalFailure,
+			od.config.ConsecutiveLocalOriginFailure,
+			od.config.EnforcingConsecutive5xx,
+		) {
+			reasons = append(reasons, "consecutive_local_failure")
 		}
 	}
 
-	if len(validEndpoints) < int(od.config.SuccessRateMinimumHosts) {
-		return
-	}
-
-	// Calculate success rates
-	successRates := make([]float64, len(validEndpoints))
-	var sum float64
-	for i, ep := range validEndpoints {
-		ep.mu.RLock()
-		total := atomic.LoadUint64(&ep.totalRequests)
-		success := atomic.LoadUint64(&ep.successCount)
-		ep.mu.RUnlock()
-
-		if total > 0 {
-			successRates[i] = float64(success) / float64(total) * 100
-			sum += successRates[i]
-		}
-	}
-
-	// Calculate mean and standard deviation
-	mean := sum / float64(len(validEndpoints))
-	var variance float64
-	for _, rate := range successRates {
-		diff := rate - mean
-		variance += diff * diff
-	}
-	stddev := math.Sqrt(variance / float64(len(validEndpoints)))
-
-	// Eject outliers
-	threshold := mean - (float64(od.config.SuccessRateStdevFactor) / 1000.0 * stddev)
-	for i, ep := range validEndpoints {
-		if successRates[i] < threshold {
-			if od.shouldEnforce(od.config.EnforcingSuccessRate) {
-				ep.mu.Lock()
-				od.ejectEndpoint(ep, "success_rate")
-				ep.mu.Unlock()
-			}
-		}
-	}
-}
-
-// detectFailurePercentageOutliers detects outliers based on failure percentage
-func (od *OutlierDetector) detectFailurePercentageOutliers(endpoints []*EndpointStats) {
-	if od.config.EnforcingFailurePercentage == 0 || od.config.FailurePercentageThreshold == 0 {
-		return
-	}
-
-	var validCount int
-	for _, ep := range endpoints {
-		ep.mu.RLock()
-		total := atomic.LoadUint64(&ep.totalRequests)
-		ep.mu.RUnlock()
-
-		if total >= uint64(od.config.FailurePercentageRequestVolume) {
-			validCount++
-		}
-	}
-
-	if validCount < int(od.config.FailurePercentageMinimumHosts) {
-		return
-	}
-
-	for _, ep := range endpoints {
-		ep.mu.Lock()
-		total := atomic.LoadUint64(&ep.totalRequests)
-		failures := atomic.LoadUint64(&ep.failureCount)
-
-		if total >= uint64(od.config.FailurePercentageRequestVolume) {
-			failurePercentage := float64(failures) / float64(total) * 100
-			if failurePercentage >= float64(od.config.FailurePercentageThreshold) {
-				if od.shouldEnforce(od.config.EnforcingFailurePercentage) {
-					od.ejectEndpoint(ep, "failure_percentage")
-				}
-			}
-		}
-		ep.mu.Unlock()
-	}
-}
-
-// ejectEndpoint ejects an endpoint
-func (od *OutlierDetector) ejectEndpoint(ep *EndpointStats, reason string) {
-	if ep.ejected {
-		return
-	}
-
-	// Check max ejection percentage
-	od.mu.RLock()
-	totalEndpoints := len(od.endpoints)
-	od.mu.RUnlock()
-
-	var ejectedCount int
-	od.mu.RLock()
-	for _, e := range od.endpoints {
-		e.mu.RLock()
-		if e.ejected {
-			ejectedCount++
-		}
-		e.mu.RUnlock()
-	}
-	od.mu.RUnlock()
-
-	maxEjected := int(float64(totalEndpoints) * float64(od.config.MaxEjectionPercent) / 100.0)
-	if ejectedCount >= maxEjected && maxEjected > 0 {
-		slog.Debug("max ejection percentage reached, not ejecting",
-			"endpoint", ep.address,
-			"ejected", ejectedCount,
-			"total", totalEndpoints)
-		return
-	}
-
-	ep.ejected = true
-	ep.ejectionCount++
-
-	// Calculate ejection time with exponential backoff
-	ejectionDuration := od.config.BaseEjectionTime * time.Duration(ep.ejectionCount)
-	if ejectionDuration > od.config.MaxEjectionTime {
-		ejectionDuration = od.config.MaxEjectionTime
-	}
-	ep.ejectionTime = time.Now().Add(ejectionDuration)
-
-	atomic.AddUint64(&od.totalEjections, 1)
-
-	slog.Warn("endpoint ejected",
-		"endpoint", ep.address,
-		"reason", reason,
-		"ejectionCount", ep.ejectionCount,
-		"ejectionDuration", ejectionDuration)
-}
-
-// shouldEnforce determines if enforcement should happen based on percentage
-func (od *OutlierDetector) shouldEnforce(enforcingPercentage uint32) bool {
-	if enforcingPercentage == 0 {
-		return false
-	}
-	if enforcingPercentage >= 100 {
-		return true
-	}
-	// For simplicity, always enforce if percentage > 0
-	// In production, this should use random sampling
-	return true
-}
-
-// IsEjected checks if an endpoint is currently ejected
-func (od *OutlierDetector) IsEjected(endpoint string) bool {
-	od.mu.RLock()
-	ep, exists := od.endpoints[endpoint]
-	od.mu.RUnlock()
-
-	if !exists {
-		return false
-	}
-
-	ep.mu.RLock()
-	defer ep.mu.RUnlock()
-
-	return ep.ejected
-}
-
-// GetStats returns outlier detection statistics
-func (od *OutlierDetector) GetStats() map[string]interface{} {
-	od.mu.RLock()
-	defer od.mu.RUnlock()
-
-	var ejectedCount int
-	for _, ep := range od.endpoints {
-		ep.mu.RLock()
-		if ep.ejected {
-			ejectedCount++
-		}
-		ep.mu.RUnlock()
-	}
-
-	return map[string]interface{}{
-		"total_endpoints": len(od.endpoints),
-		"ejected_count":   ejectedCount,
-		"total_ejections": atomic.LoadUint64(&od.totalEjections),
-	}
+	return reasons
 }

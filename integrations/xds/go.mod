@@ -1,11 +1,9 @@
 module github.com/codesjoy/yggdrasil-ecosystem/integrations/xds/v2
 
-go 1.24.0
-
-toolchain go1.24.6
+go 1.25.7
 
 require (
-	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5
+	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7
 	github.com/envoyproxy/go-control-plane v0.14.0
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260122232226-8e98ce8d340d
@@ -16,6 +14,7 @@ require (
 require (
 	cel.dev/expr v0.24.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20251022180443-0feb69152e9f // indirect
+	github.com/codesjoy/pkg/utils v0.0.0-20260227125603-faf7bfdf00a7 // indirect
 	github.com/creasty/defaults v1.8.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/kr/text v0.2.0 // indirect

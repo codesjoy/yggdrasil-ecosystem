@@ -19,11 +19,11 @@ import (
 	"log/slog"
 	"os"
 
+	librarypb "github.com/codesjoy/yggdrasil-ecosystem/examples/protogen/library/v1"
 	_ "github.com/codesjoy/yggdrasil-ecosystem/integrations/xds/v2"
 	"github.com/codesjoy/yggdrasil/v2"
 	"github.com/codesjoy/yggdrasil/v2/config"
 	"github.com/codesjoy/yggdrasil/v2/config/source/file"
-	librarypb "github.com/codesjoy/yggdrasil-ecosystem/examples/protogen/library/v1"
 	_ "github.com/codesjoy/yggdrasil/v2/interceptor/logging"
 	"github.com/codesjoy/yggdrasil/v2/metadata"
 )

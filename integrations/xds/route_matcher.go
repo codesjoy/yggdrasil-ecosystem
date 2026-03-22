@@ -95,56 +95,54 @@ func (m *RouteMatch) Matches(path string, headers map[string]string) bool {
 		return true
 	}
 
-	if m.Path != "" {
-		if path != m.Path {
-			return false
-		}
-	} else if m.Prefix != "" {
-		if !strings.HasPrefix(path, m.Prefix) {
-			return false
-		}
-	} else if m.Suffix != "" {
-		if !strings.HasSuffix(path, m.Suffix) {
-			return false
-		}
-	} else if m.Contains != "" {
-		if !strings.Contains(path, m.Contains) {
-			return false
-		}
-	} else if m.Regex != nil {
-		if !m.Regex.MatchString(path) {
+	return m.matchPath(path) && m.matchHeaders(headers)
+}
+
+func (m *RouteMatch) matchPath(path string) bool {
+	switch {
+	case m.Path != "":
+		return path == m.Path
+	case m.Prefix != "":
+		return strings.HasPrefix(path, m.Prefix)
+	case m.Suffix != "":
+		return strings.HasSuffix(path, m.Suffix)
+	case m.Contains != "":
+		return strings.Contains(path, m.Contains)
+	case m.Regex != nil:
+		return m.Regex.MatchString(path)
+	default:
+		return true
+	}
+}
+
+func (m *RouteMatch) matchHeaders(headers map[string]string) bool {
+	for _, header := range m.Headers {
+		if !header.matches(headers) {
 			return false
 		}
 	}
+	return true
+}
 
-	for _, h := range m.Headers {
-		val, ok := headers[h.Name]
-		if !ok {
-			return false
-		}
-
-		if h.Present {
-			continue
-		}
-
-		if h.ExactMatch != "" && val != h.ExactMatch {
-			return false
-		}
-
-		if h.PrefixMatch != "" && !strings.HasPrefix(val, h.PrefixMatch) {
-			return false
-		}
-
-		if h.SuffixMatch != "" && !strings.HasSuffix(val, h.SuffixMatch) {
-			return false
-		}
-
-		if h.RegexMatch != nil {
-			if !h.RegexMatch.MatchString(val) {
-				return false
-			}
-		}
+func (h *HeaderMatcher) matches(headers map[string]string) bool {
+	value, ok := headers[h.Name]
+	if !ok {
+		return false
 	}
-
+	if h.Present {
+		return true
+	}
+	if h.ExactMatch != "" && value != h.ExactMatch {
+		return false
+	}
+	if h.PrefixMatch != "" && !strings.HasPrefix(value, h.PrefixMatch) {
+		return false
+	}
+	if h.SuffixMatch != "" && !strings.HasSuffix(value, h.SuffixMatch) {
+		return false
+	}
+	if h.RegexMatch != nil && !h.RegexMatch.MatchString(value) {
+		return false
+	}
 	return true
 }

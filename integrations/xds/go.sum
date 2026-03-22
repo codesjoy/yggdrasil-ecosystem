@@ -4,8 +4,10 @@ github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UF
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/cncf/xds/go v0.0.0-20251022180443-0feb69152e9f h1:Y8xYupdHxryycyPlc9Y+bSQAYZnetRJ70VMVKm5CKI0=
 github.com/cncf/xds/go v0.0.0-20251022180443-0feb69152e9f/go.mod h1:HlzOvOjVBOfTGSRXRyY0OiCS/3J1akRGQQpRO/7zyF4=
-github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5 h1:gyA4SnhqfbKOE+32bfXlvLm3SkiJbpblh/PSEYKPCtA=
-github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5/go.mod h1:9trJRWbbHOK/uHD9CYpGLN6jD5pJH6bia89Qi0mKwmY=
+github.com/codesjoy/pkg/utils v0.0.0-20260227125603-faf7bfdf00a7 h1:pbRh9VmF4Y4Y3tJP2zAJcW1wlSxhMBCNBO1MZR72RgY=
+github.com/codesjoy/pkg/utils v0.0.0-20260227125603-faf7bfdf00a7/go.mod h1:U0/UABf9bPmj2mjbDvXvE3emANneRnHgrzB8yEctqow=
+github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7 h1:WowtTL1zSkir01gY89ihrfIhaPoHWcSfNx8Ar2wXHaU=
+github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7/go.mod h1:yCXRfXw92jbugGxyf+kcVigUBJC9xMVR7cKeRXHVGYk=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/creasty/defaults v1.8.0 h1:z27FJxCAa0JKt3utc0sCImAEb+spPucmKoOdLHvHYKk=
 github.com/creasty/defaults v1.8.0/go.mod h1:iGzKe6pbEHnpMPtfDXZEr0NVxWnPTjb1bbDy08fPzYM=

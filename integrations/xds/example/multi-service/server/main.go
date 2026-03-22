@@ -19,11 +19,11 @@ import (
 	"log/slog"
 	"os"
 
+	helloworldv1 "github.com/codesjoy/yggdrasil-ecosystem/examples/protogen/helloworld"
+	libraryv1 "github.com/codesjoy/yggdrasil-ecosystem/examples/protogen/library/v1"
 	"github.com/codesjoy/yggdrasil/v2"
 	"github.com/codesjoy/yggdrasil/v2/config"
 	"github.com/codesjoy/yggdrasil/v2/config/source/file"
-	helloworldv1 "github.com/codesjoy/yggdrasil-ecosystem/examples/protogen/helloworld"
-	libraryv1 "github.com/codesjoy/yggdrasil-ecosystem/examples/protogen/library/v1"
 	"github.com/codesjoy/yggdrasil/v2/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 )

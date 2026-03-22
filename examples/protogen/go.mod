@@ -4,7 +4,7 @@ go 1.25.7
 
 require (
 	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622
-	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5
+	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7
 	github.com/go-chi/chi/v5 v5.2.4
 	google.golang.org/genproto/googleapis/api v0.0.0-20260122232226-8e98ce8d340d
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260122232226-8e98ce8d340d
@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/codesjoy/pkg/utils v0.0.0-20260227125603-faf7bfdf00a7 // indirect
 	github.com/creasty/defaults v1.8.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
