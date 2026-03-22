@@ -31,13 +31,15 @@ import (
 
 // Registry is a registry for etcd.
 type Registry struct {
-	cfg RegistryConfig
-	cli *clientv3.Client
+	cfg    RegistryConfig
+	cli    *clientv3.Client
+	client etcdClient
 
 	mu    sync.Mutex
 	regs  map[string]registryEntry
 	close chan struct{}
 	once  sync.Once
+	after func(time.Duration) <-chan time.Time
 }
 
 type registryEntry struct {
@@ -61,10 +63,12 @@ func NewRegistry(cfg RegistryConfig) (*Registry, error) {
 		return nil, err
 	}
 	return &Registry{
-		cfg:   cfg,
-		cli:   cli,
-		regs:  map[string]registryEntry{},
-		close: make(chan struct{}),
+		cfg:    cfg,
+		cli:    cli,
+		client: wrapClient(cli),
+		regs:   map[string]registryEntry{},
+		close:  make(chan struct{}),
+		after:  time.After,
 	}, nil
 }
 
@@ -140,7 +144,7 @@ func (r *Registry) Deregister(ctx context.Context, inst yregistry.Instance) erro
 	}
 	r.mu.Unlock()
 
-	_, err = r.cli.Delete(ctx, key)
+	_, err = r.client.Delete(ctx, key)
 	return err
 }
 
@@ -156,17 +160,19 @@ func (r *Registry) Close() error {
 		}
 		r.regs = map[string]registryEntry{}
 		r.mu.Unlock()
-		_ = r.cli.Close()
+		if r.client != nil {
+			_ = r.client.Close()
+		}
 	})
 	return nil
 }
 
 func (r *Registry) putOnce(ctx context.Context, key, value string) error {
-	resp, err := r.cli.Grant(ctx, int64(r.cfg.TTL/time.Second))
+	resp, err := r.client.Grant(ctx, int64(r.cfg.TTL/time.Second))
 	if err != nil {
 		return err
 	}
-	_, err = r.cli.Put(ctx, key, value, clientv3.WithLease(resp.ID))
+	_, err = r.client.Put(ctx, key, value, clientv3.WithLease(resp.ID))
 	if err != nil {
 		return err
 	}
@@ -188,21 +194,27 @@ func (r *Registry) keepAliveLoop(ctx context.Context, key, value string) {
 		default:
 		}
 
-		resp, err := r.cli.Grant(ctx, int64(r.cfg.TTL/time.Second))
+		resp, err := r.client.Grant(ctx, int64(r.cfg.TTL/time.Second))
 		if err != nil {
-			time.Sleep(r.cfg.RetryInterval)
+			if !r.waitRetry(ctx) {
+				return
+			}
 			continue
 		}
 
-		ka, kerr := r.cli.KeepAlive(ctx, resp.ID)
+		ka, kerr := r.client.KeepAlive(ctx, resp.ID)
 		if kerr != nil {
-			time.Sleep(r.cfg.RetryInterval)
+			if !r.waitRetry(ctx) {
+				return
+			}
 			continue
 		}
 
-		_, err = r.cli.Put(ctx, key, value, clientv3.WithLease(resp.ID))
+		_, err = r.client.Put(ctx, key, value, clientv3.WithLease(resp.ID))
 		if err != nil {
-			time.Sleep(r.cfg.RetryInterval)
+			if !r.waitRetry(ctx) {
+				return
+			}
 			continue
 		}
 
@@ -234,8 +246,26 @@ func (r *Registry) keepAliveLoop(ctx context.Context, key, value string) {
 			return
 		case <-r.close:
 			return
-		case <-time.After(r.cfg.RetryInterval):
+		case <-r.retryAfter(r.cfg.RetryInterval):
 		}
+	}
+}
+
+func (r *Registry) retryAfter(d time.Duration) <-chan time.Time {
+	if r.after != nil {
+		return r.after(d)
+	}
+	return time.After(d)
+}
+
+func (r *Registry) waitRetry(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-r.close:
+		return false
+	case <-r.retryAfter(r.cfg.RetryInterval):
+		return true
 	}
 }
 
@@ -278,33 +308,3 @@ func (r *Registry) buildKeyValue(inst yregistry.Instance) (string, string, error
 	key := strings.Join(parts, "/")
 	return key, string(b), nil
 }
-
-type demoInstance struct {
-	namespace string
-	name      string
-	version   string
-	region    string
-	zone      string
-	campus    string
-	metadata  map[string]string
-	endpoints []yregistry.Endpoint
-}
-
-func (d demoInstance) Region() string                  { return d.region }
-func (d demoInstance) Zone() string                    { return d.zone }
-func (d demoInstance) Campus() string                  { return d.campus }
-func (d demoInstance) Namespace() string               { return d.namespace }
-func (d demoInstance) Name() string                    { return d.name }
-func (d demoInstance) Version() string                 { return d.version }
-func (d demoInstance) Metadata() map[string]string     { return d.metadata }
-func (d demoInstance) Endpoints() []yregistry.Endpoint { return d.endpoints }
-
-type demoEndpoint struct {
-	scheme   string
-	address  string
-	metadata map[string]string
-}
-
-func (d demoEndpoint) Scheme() string              { return d.scheme }
-func (d demoEndpoint) Address() string             { return d.address }
-func (d demoEndpoint) Metadata() map[string]string { return d.metadata }

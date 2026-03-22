@@ -1,3 +1,6 @@
+//go:build integration
+// +build integration
+
 // Copyright 2022 The codesjoy Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	yregistry "github.com/codesjoy/yggdrasil/v2/registry"
 	"go.etcd.io/etcd/server/v3/embed"
 )
 
@@ -53,3 +57,33 @@ func newEmbeddedEtcd(t *testing.T) *embeddedEtcd {
 		endpoint: etcdSrv.Clients[0].Addr().String(),
 	}
 }
+
+type demoInstance struct {
+	namespace string
+	name      string
+	version   string
+	region    string
+	zone      string
+	campus    string
+	metadata  map[string]string
+	endpoints []yregistry.Endpoint
+}
+
+func (d demoInstance) Region() string                  { return d.region }
+func (d demoInstance) Zone() string                    { return d.zone }
+func (d demoInstance) Campus() string                  { return d.campus }
+func (d demoInstance) Namespace() string               { return d.namespace }
+func (d demoInstance) Name() string                    { return d.name }
+func (d demoInstance) Version() string                 { return d.version }
+func (d demoInstance) Metadata() map[string]string     { return d.metadata }
+func (d demoInstance) Endpoints() []yregistry.Endpoint { return d.endpoints }
+
+type demoEndpoint struct {
+	scheme   string
+	address  string
+	metadata map[string]string
+}
+
+func (d demoEndpoint) Scheme() string              { return d.scheme }
+func (d demoEndpoint) Address() string             { return d.address }
+func (d demoEndpoint) Metadata() map[string]string { return d.metadata }

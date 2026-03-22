@@ -15,10 +15,36 @@
 package etcd
 
 import (
+	"context"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
+
+type etcdClient interface {
+	Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error)
+	Put(
+		ctx context.Context,
+		key, val string,
+		opts ...clientv3.OpOption,
+	) (*clientv3.PutResponse, error)
+	Delete(
+		ctx context.Context,
+		key string,
+		opts ...clientv3.OpOption,
+	) (*clientv3.DeleteResponse, error)
+	Grant(ctx context.Context, ttl int64) (*clientv3.LeaseGrantResponse, error)
+	KeepAlive(
+		ctx context.Context,
+		id clientv3.LeaseID,
+	) (<-chan *clientv3.LeaseKeepAliveResponse, error)
+	Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan
+	Close() error
+}
+
+type realEtcdClient struct {
+	*clientv3.Client
+}
 
 func newClient(cfg ClientConfig) (*clientv3.Client, error) {
 	if len(cfg.Endpoints) == 0 {
@@ -33,4 +59,11 @@ func newClient(cfg ClientConfig) (*clientv3.Client, error) {
 		Username:    cfg.Username,
 		Password:    cfg.Password,
 	})
+}
+
+func wrapClient(cli *clientv3.Client) etcdClient {
+	if cli == nil {
+		return nil
+	}
+	return &realEtcdClient{Client: cli}
 }

@@ -4,8 +4,12 @@ github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1x
 github.com/cenkalti/backoff/v5 v5.0.3/go.mod h1:rkhZdG3JZukswDf7f0cwqPNk4K0sa+F97BxZthm/crw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
-github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5 h1:gyA4SnhqfbKOE+32bfXlvLm3SkiJbpblh/PSEYKPCtA=
-github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5/go.mod h1:9trJRWbbHOK/uHD9CYpGLN6jD5pJH6bia89Qi0mKwmY=
+github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622 h1:NC4ThDcTCuj+E3cAhUbgOXAxnB64ZDdVC+ENc7/yOjg=
+github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622/go.mod h1:rSC6hpUrM9NheRIidDaMT7zZCPA5Xpdm13MNf7tYbls=
+github.com/codesjoy/pkg/utils v0.0.0-20260227125603-faf7bfdf00a7 h1:pbRh9VmF4Y4Y3tJP2zAJcW1wlSxhMBCNBO1MZR72RgY=
+github.com/codesjoy/pkg/utils v0.0.0-20260227125603-faf7bfdf00a7/go.mod h1:U0/UABf9bPmj2mjbDvXvE3emANneRnHgrzB8yEctqow=
+github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7 h1:WowtTL1zSkir01gY89ihrfIhaPoHWcSfNx8Ar2wXHaU=
+github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7/go.mod h1:yCXRfXw92jbugGxyf+kcVigUBJC9xMVR7cKeRXHVGYk=
 github.com/coreos/go-semver v0.3.1 h1:yi21YpKnrx1gt5R+la8n5WgS0kCrsPp33dmEyHReZr4=
 github.com/coreos/go-semver v0.3.1/go.mod h1:irMmmIw/7yzSRPWryHsK7EYSg09caPQL03VsM8rvUec=
 github.com/coreos/go-systemd/v22 v22.7.0 h1:LAEzFkke61DFROc7zNLX/WA2i5J8gYqe0rSj9KI28KA=

@@ -46,6 +46,25 @@ Optional health check:
 etcdctl --endpoints= endpoint health
 ```
 
+## Testing
+
+This module follows the repository testing convention:
+
+- unit tests stay next to the package code as `*_test.go`
+- package-level integration tests stay next to the package code as
+  `*_integration_test.go`
+- integration tests use the `integration` build tag
+
+Current automated integration tests in this module use **embedded etcd** for
+package-level white-box verification, so Docker is not required to run:
+
+```bash
+make test TEST_TAGS=integration MODULES="integrations/etcd"
+```
+
+The Docker command above remains useful for local manual verification, examples,
+and future scenarios that need a real external etcd service.
+
 ### 2. Configure registry and resolver
 
 ```yaml

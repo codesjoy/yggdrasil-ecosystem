@@ -77,6 +77,7 @@ func NewConfigSource(cfg ConfigSourceConfig) (source.Source, error) {
 		name:        name,
 		cfg:         cfg,
 		cli:         cli,
+		client:      wrapClient(cli),
 		watch:       watch,
 		dialTimeout: dialTimeout,
 		closeCh:     make(chan struct{}),
@@ -87,6 +88,7 @@ type configSource struct {
 	name        string
 	cfg         ConfigSourceConfig
 	cli         *clientv3.Client
+	client      etcdClient
 	watch       bool
 	dialTimeout time.Duration
 
@@ -126,7 +128,7 @@ func (s *configSource) Watch() (<-chan source.Data, error) {
 		}()
 
 		key := s.watchKey()
-		ch := s.cli.Watch(ctx, key, s.watchOptions()...)
+		ch := s.client.Watch(ctx, key, s.watchOptions()...)
 		for {
 			select {
 			case <-ctx.Done():
@@ -152,7 +154,9 @@ func (s *configSource) Watch() (<-chan source.Data, error) {
 func (s *configSource) Close() error {
 	s.closeOnce.Do(func() {
 		close(s.closeCh)
-		_ = s.cli.Close()
+		if s.client != nil {
+			_ = s.client.Close()
+		}
 	})
 	return nil
 }
@@ -174,7 +178,7 @@ func (s *configSource) watchOptions() []clientv3.OpOption {
 func (s *configSource) readBlob() (source.Data, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.dialTimeout)
 	defer cancel()
-	resp, err := s.cli.Get(ctx, s.cfg.Key)
+	resp, err := s.client.Get(ctx, s.cfg.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +191,7 @@ func (s *configSource) readBlob() (source.Data, error) {
 func (s *configSource) readKV() (source.Data, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.dialTimeout)
 	defer cancel()
-	resp, err := s.cli.Get(ctx, s.cfg.Prefix, clientv3.WithPrefix())
+	resp, err := s.client.Get(ctx, s.cfg.Prefix, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}

@@ -30,9 +30,10 @@ import (
 
 // Resolver implements resolver.Resolver.
 type Resolver struct {
-	name string
-	cfg  ResolverConfig
-	cli  *clientv3.Client
+	name   string
+	cfg    ResolverConfig
+	cli    *clientv3.Client
+	client etcdClient
 
 	mu       sync.Mutex
 	watchers map[string]map[yresolver.Client]struct{}
@@ -56,6 +57,7 @@ func NewResolver(name string, cfg ResolverConfig) (*Resolver, error) {
 		name:     name,
 		cfg:      cfg,
 		cli:      cli,
+		client:   wrapClient(cli),
 		watchers: map[string]map[yresolver.Client]struct{}{},
 		cancels:  map[string]context.CancelFunc{},
 	}, nil
@@ -122,11 +124,11 @@ func (r *Resolver) watchLoop(ctx context.Context, serviceName string) {
 		prefix := r.servicePrefix(serviceName)
 		var rev int64
 		for {
-			getResp, err := r.cli.Get(ctx, prefix, clientv3.WithPrefix())
+			getResp, err := r.client.Get(ctx, prefix, clientv3.WithPrefix())
 			if err == nil {
 				rev = getResp.Header.Revision
 			}
-			wch := r.cli.Watch(ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(rev+1))
+			wch := r.client.Watch(ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(rev+1))
 			for resp := range wch {
 				if resp.Canceled {
 					return
@@ -202,7 +204,7 @@ func (r *Resolver) snapshotWatchers(serviceName string) []yresolver.Client {
 
 func (r *Resolver) fetchState(ctx context.Context, serviceName string) (yresolver.State, error) {
 	prefix := r.servicePrefix(serviceName)
-	resp, err := r.cli.Get(ctx, prefix, clientv3.WithPrefix())
+	resp, err := r.client.Get(ctx, prefix, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}

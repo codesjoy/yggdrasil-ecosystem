@@ -6,12 +6,14 @@ replace github.com/codesjoy/yggdrasil-ecosystem/integrations/etcd/v2 => ../
 
 require (
 	github.com/codesjoy/yggdrasil-ecosystem/integrations/etcd/v2 v2.0.0-00010101000000-000000000000
-	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5
+	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7
 	go.etcd.io/etcd/client/v3 v3.6.8
 )
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622 // indirect
+	github.com/codesjoy/pkg/utils v0.0.0-20260227125603-faf7bfdf00a7 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
 	github.com/creasty/defaults v1.8.0 // indirect
