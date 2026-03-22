@@ -14,13 +14,13 @@
 
 module github.com/codesjoy/yggdrasil-ecosystem/integrations/otlp/v2/example
 
-go 1.24.0
+go 1.25.7
 
 replace github.com/codesjoy/yggdrasil-ecosystem/integrations/otlp/v2 => ..
 
 require (
 	github.com/codesjoy/yggdrasil-ecosystem/integrations/otlp/v2 v2.0.0
-	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5
+	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7
 	go.opentelemetry.io/otel v1.39.0
 	go.opentelemetry.io/otel/metric v1.39.0
 )
@@ -28,7 +28,10 @@ require (
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622 // indirect
+	github.com/codesjoy/pkg/utils v0.0.0-20260227125603-faf7bfdf00a7 // indirect
 	github.com/creasty/defaults v1.8.0 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

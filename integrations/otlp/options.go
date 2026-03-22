@@ -235,10 +235,11 @@ func createHTTPMeterClientOptions(cfg MetricExporterConfig) []otlpmetrichttp.Opt
 func createGRPCDialOptions(tlsCfg TLSConfig, _ RetryConfig) ([]grpc.DialOption, error) {
 	var opts []grpc.DialOption
 
-	if tlsCfg.Insecure {
+	switch {
+	case tlsCfg.Insecure:
 		// Skip TLS verification (for development)
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	} else if tlsCfg.Enabled {
+	case tlsCfg.Enabled:
 		// TLS with custom certificates
 		tlsConfig := &tls.Config{} // nolint:gosec
 
@@ -261,7 +262,7 @@ func createGRPCDialOptions(tlsCfg TLSConfig, _ RetryConfig) ([]grpc.DialOption, 
 		}
 
 		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
-	} else {
+	default:
 		// Default to insecure for development
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
