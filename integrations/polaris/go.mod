@@ -4,7 +4,8 @@ go 1.25.7
 
 require (
 	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622
-	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5
+	github.com/codesjoy/pkg/utils v0.0.0-20260316022210-2e62ff5ff745
+	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/polarismesh/polaris-go v1.6.1
@@ -17,6 +18,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/creasty/defaults v1.8.0 // indirect
 	github.com/dlclark/regexp2 v1.7.0 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

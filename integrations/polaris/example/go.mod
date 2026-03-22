@@ -10,12 +10,13 @@ require (
 	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622
 	github.com/codesjoy/yggdrasil-ecosystem/examples/protogen v0.0.0-00010101000000-000000000000
 	github.com/codesjoy/yggdrasil-ecosystem/integrations/polaris/v2 v2.0.0-00010101000000-000000000000
-	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5
+	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7
 )
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/codesjoy/pkg/utils v0.0.0-20260316022210-2e62ff5ff745 // indirect
 	github.com/creasty/defaults v1.8.0 // indirect
 	github.com/dlclark/regexp2 v1.7.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect

@@ -20,10 +20,10 @@ import (
 	"time"
 
 	"github.com/codesjoy/pkg/basic/xerror"
+	"github.com/codesjoy/pkg/utils/xmap"
 	"github.com/codesjoy/yggdrasil/v2/config"
 	"github.com/codesjoy/yggdrasil/v2/interceptor"
 	"github.com/codesjoy/yggdrasil/v2/status"
-	"github.com/codesjoy/yggdrasil/v2/utils/xmap"
 	"github.com/mitchellh/mapstructure"
 	polaris "github.com/polarismesh/polaris-go"
 	"github.com/polarismesh/polaris-go/pkg/model"
