@@ -166,7 +166,7 @@ func (r *Resolver) watchLoop(ctx context.Context, appName string) {
 }
 
 func (r *Resolver) watch(ctx context.Context, appName string) error {
-	kube, err := GetKubeClient(r.cfg.Kubeconfig)
+	kube, err := kubeClientProvider(r.cfg.Kubeconfig)
 	if err != nil {
 		return fmt.Errorf("failed to get kube client: %w", err)
 	}

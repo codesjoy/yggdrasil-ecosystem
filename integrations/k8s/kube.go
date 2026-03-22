@@ -25,9 +25,10 @@ import (
 )
 
 var (
-	kubeClient     kubernetes.Interface
-	kubeClientOnce sync.Once
-	kubeClientErr  error
+	kubeClient         kubernetes.Interface
+	kubeClientOnce     sync.Once
+	kubeClientErr      error
+	kubeClientProvider = GetKubeClient
 )
 
 // GetKubeClient returns a kubernetes client.

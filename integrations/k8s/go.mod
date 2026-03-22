@@ -1,15 +1,16 @@
 module github.com/codesjoy/yggdrasil-ecosystem/integrations/k8s/v2
 
-go 1.24.6
+go 1.25.7
 
 require (
-	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5
+	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7
 	k8s.io/api v0.34.0
 	k8s.io/apimachinery v0.34.0
 	k8s.io/client-go v0.34.0
 )
 
 require (
+	github.com/codesjoy/pkg/utils v0.0.0-20260227125603-faf7bfdf00a7 // indirect
 	github.com/creasty/defaults v1.8.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect

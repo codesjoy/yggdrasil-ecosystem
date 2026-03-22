@@ -128,7 +128,7 @@ func (s *configSource) Watch() (<-chan source.Data, error) {
 	if !s.watch {
 		return nil, errors.New("watch disabled for this source")
 	}
-	kube, err := GetKubeClient(s.cfg.Kubeconfig)
+	kube, err := kubeClientProvider(s.cfg.Kubeconfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get kube client: %w", err)
 	}
@@ -221,7 +221,7 @@ func (s *configSource) Close() error {
 }
 
 func (s *configSource) fetch() (map[string]any, source.Parser, error) {
-	kube, err := GetKubeClient(s.cfg.Kubeconfig)
+	kube, err := kubeClientProvider(s.cfg.Kubeconfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get kube client: %w", err)
 	}

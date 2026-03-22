@@ -1,19 +1,22 @@
 module github.com/codesjoy/yggdrasil-ecosystem/integrations/k8s/v2/example
 
-go 1.24.6
+go 1.25.7
 
 replace github.com/codesjoy/yggdrasil-ecosystem/integrations/k8s/v2 => ../
 
 require (
 	github.com/codesjoy/yggdrasil-ecosystem/integrations/k8s/v2 v2.0.0-00010101000000-000000000000
-	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.5
+	github.com/codesjoy/yggdrasil/v2 v2.0.0-rc.7
 )
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622 // indirect
+	github.com/codesjoy/pkg/utils v0.0.0-20260227125603-faf7bfdf00a7 // indirect
 	github.com/creasty/defaults v1.8.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
