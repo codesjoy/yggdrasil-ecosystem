@@ -17,6 +17,7 @@ The repository is organized by responsibility:
 | `integrations/k8s` | Kubernetes service discovery resolver plus ConfigMap/Secret config sources | [integrations/k8s/README.md](./integrations/k8s/README.md) |
 | `integrations/otlp` | OpenTelemetry OTLP exporters for traces and metrics | [integrations/otlp/README.md](./integrations/otlp/README.md) |
 | `integrations/polaris` | Polaris registry, resolver, config source, and governance hooks | [integrations/polaris/README.md](./integrations/polaris/README.md) |
+| `integrations/protovalidate` | Buf Protovalidate server-side request validation interceptors | [integrations/protovalidate/README.md](./integrations/protovalidate/README.md) |
 | `integrations/xds` | xDS resolver and balancer for dynamic traffic governance | [integrations/xds/README.md](./integrations/xds/README.md) |
 
 ## Quick Start
@@ -30,6 +31,7 @@ go get github.com/codesjoy/yggdrasil-ecosystem/integrations/etcd/v2
 go get github.com/codesjoy/yggdrasil-ecosystem/integrations/k8s/v2
 go get github.com/codesjoy/yggdrasil-ecosystem/integrations/otlp/v2
 go get github.com/codesjoy/yggdrasil-ecosystem/integrations/polaris/v2
+go get github.com/codesjoy/yggdrasil-ecosystem/integrations/protovalidate/v2
 go get github.com/codesjoy/yggdrasil-ecosystem/integrations/xds/v2
 ```
 
@@ -100,6 +102,7 @@ make MODULES="integrations/otlp integrations/otlp/example" test
 - [integrations/k8s/README.md](./integrations/k8s/README.md): Kubernetes resolver and config-source usage.
 - [integrations/otlp/README.md](./integrations/otlp/README.md): OTLP exporter configuration and behavior.
 - [integrations/polaris/README.md](./integrations/polaris/README.md): Polaris integration and governance options.
+- [integrations/protovalidate/README.md](./integrations/protovalidate/README.md): Protovalidate interceptor setup and explicit validation APIs.
 - [integrations/xds/README.md](./integrations/xds/README.md): xDS resolver/balancer architecture and setup.
 
 ## Contributing
