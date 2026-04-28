@@ -1,0 +1,24 @@
+yggdrasil:
+  mode: dev
+
+  discovery:
+    resolvers:
+      kubernetes:
+        type: kubernetes
+        config:
+          namespace: default
+          mode: endpointslice
+          port_name: http
+          protocol: http
+          kubeconfig: ""
+          backoff:
+            base_delay: 1s
+            multiplier: 1.6
+            jitter: 0.2
+            max_delay: 30s
+
+  clients:
+    services:
+      downstream-service:
+        resolver: kubernetes
+        balancer: default

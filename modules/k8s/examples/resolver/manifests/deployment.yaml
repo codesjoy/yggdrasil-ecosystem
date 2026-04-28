@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: downstream-service
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: downstream-service
+  template:
+    metadata:
+      labels:
+        app: downstream-service
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+          ports:
+            - containerPort: 80

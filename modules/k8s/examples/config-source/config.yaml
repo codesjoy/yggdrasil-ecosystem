@@ -1,0 +1,19 @@
+yggdrasil:
+  mode: dev
+
+  config:
+    sources:
+      - kind: kubernetes-configmap
+        name: k8s:config-source
+        priority: remote
+        config:
+          namespace: default
+          name: example-config
+          key: config.yaml
+          watch: true
+          kubeconfig: ""
+
+app:
+  config_source:
+    greeting: "hello from local fallback"
+    name: local

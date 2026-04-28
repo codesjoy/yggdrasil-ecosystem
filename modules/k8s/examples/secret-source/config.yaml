@@ -1,0 +1,19 @@
+yggdrasil:
+  mode: dev
+
+  config:
+    sources:
+      - kind: kubernetes-secret
+        name: k8s:secret-source
+        priority: remote
+        config:
+          namespace: default
+          name: example-secret
+          key: config.yaml
+          watch: true
+          kubeconfig: ""
+
+app:
+  config_source:
+    greeting: "hello from local fallback"
+    name: local

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: downstream-service
+  namespace: default
+spec:
+  selector:
+    app: downstream-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+  type: ClusterIP

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: example-config
+  namespace: default
+data:
+  config.yaml: |
+    app:
+      config_source:
+        greeting: "hello from ConfigMap v2"
+        name: remote-updated
