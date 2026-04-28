@@ -1,0 +1,28 @@
+yggdrasil:
+  mode: dev
+
+  polaris:
+    sdks:
+      default:
+        addresses:
+          - "127.0.0.1:8091"
+        config_addresses:
+          - "127.0.0.1:8093"
+        token: ""
+
+  config:
+    sources:
+      - kind: polaris
+        name: polaris:config-source
+        priority: remote
+        config:
+          sdk: default
+          namespace: default
+          file_group: yggdrasil-polaris-examples
+          file_name: config-source.yaml
+          fetch_timeout: 3s
+
+app:
+  config_source:
+    greeting: "hello from local fallback"
+    name: local

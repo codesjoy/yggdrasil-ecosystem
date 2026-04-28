@@ -1,0 +1,67 @@
+yggdrasil:
+  mode: dev
+
+  polaris:
+    sdks:
+      default:
+        addresses:
+          - "127.0.0.1:8091"
+        config_addresses:
+          - "127.0.0.1:8093"
+        token: ""
+    governance:
+      defaults:
+        sdk: default
+        namespace: default
+        caller_service: github.com.codesjoy.yggdrasil-ecosystem.modules.polaris.examples.quickstart.client
+        caller_namespace: default
+        routing:
+          enable: false
+          recover_all: true
+          routers: []
+          lb_policy: ""
+          timeout: 200ms
+          retry_count: 0
+          arguments: {}
+        rate_limit:
+          enable: false
+          token: 1
+          timeout: 200ms
+          retry_count: 0
+          arguments: {}
+          release: true
+        circuit_breaker:
+          enable: false
+
+  discovery:
+    resolvers:
+      polaris:
+        type: polaris
+        config:
+          sdk: default
+          namespace: default
+          protocols:
+            - grpc
+          refresh_interval: 5s
+          timeout: 2s
+          retry_count: 0
+          skip_route_filter: true
+          metadata: {}
+
+  balancers:
+    defaults:
+      polaris:
+        type: polaris
+        config:
+          sdk: default
+          namespace: default
+
+  clients:
+    services:
+      github.com.codesjoy.yggdrasil-ecosystem.modules.polaris.examples.quickstart.server:
+        resolver: polaris
+        balancer: polaris
+        interceptors:
+          unary:
+            - polaris_ratelimit
+            - polaris_circuitbreaker

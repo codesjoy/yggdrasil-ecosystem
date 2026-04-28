@@ -1,0 +1,48 @@
+yggdrasil:
+  mode: dev
+
+  server:
+    transports:
+      - grpc
+
+  transports:
+    grpc:
+      server:
+        address: "127.0.0.1:56232"
+        attr:
+          example: metadata-discovery
+          version: canary
+
+  admin:
+    application:
+      namespace: default
+      version: canary
+      metadata:
+        example: metadata-discovery
+        version: canary
+
+  polaris:
+    sdks:
+      default:
+        addresses:
+          - "127.0.0.1:8091"
+        config_addresses:
+          - "127.0.0.1:8093"
+        token: ""
+
+  discovery:
+    registry:
+      type: polaris
+      config:
+        sdk: default
+        namespace: default
+        service_token: ""
+        ttl: 5s
+        auto_heartbeat: true
+        timeout: 2s
+        retry_count: 0
+
+app:
+  metadata_discovery:
+    greeting: "hello from canary"
+    version: canary

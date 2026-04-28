@@ -1,0 +1,4 @@
+app:
+  config_source:
+    greeting: "hello from Polaris config source"
+    name: remote
