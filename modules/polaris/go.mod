@@ -7,7 +7,7 @@ replace github.com/codesjoy/yggdrasil/v3 => ../../../yggdrasil
 require (
 	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622
 	github.com/codesjoy/pkg/utils v0.0.0-20260316022210-2e62ff5ff745
-	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.1
+	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/polarismesh/polaris-go v1.6.1

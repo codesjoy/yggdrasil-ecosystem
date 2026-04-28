@@ -5,7 +5,7 @@ go 1.25.7
 replace github.com/codesjoy/yggdrasil/v3 => ../../../yggdrasil
 
 require (
-	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.1
+	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2
 	github.com/envoyproxy/go-control-plane v0.14.0
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/mitchellh/mapstructure v1.5.0

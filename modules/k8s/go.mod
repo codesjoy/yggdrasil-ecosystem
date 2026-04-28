@@ -5,7 +5,7 @@ go 1.25.7
 replace github.com/codesjoy/yggdrasil/v3 => ../../../yggdrasil
 
 require (
-	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.1
+	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2
 	github.com/mitchellh/mapstructure v1.5.0
 	k8s.io/api v0.34.0
 	k8s.io/apimachinery v0.34.0

@@ -206,6 +206,8 @@ github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622 h1:NC4Th
 github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622/go.mod h1:rSC6hpUrM9NheRIidDaMT7zZCPA5Xpdm13MNf7tYbls=
 github.com/codesjoy/pkg/utils v0.0.0-20260316022210-2e62ff5ff745 h1:v3THuZpCYs2+Ud8Y9Wgw3aGEdOn7/oxRpyq9GUXQk7U=
 github.com/codesjoy/pkg/utils v0.0.0-20260316022210-2e62ff5ff745/go.mod h1:U0/UABf9bPmj2mjbDvXvE3emANneRnHgrzB8yEctqow=
+github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2 h1:nqpi7L8+l2rRs1yE3uc82PPXEueI40+xjuCJ6tebJgo=
+github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2/go.mod h1:6w05XL6s3/NQb064Mskob1X8zVecY+U+3dm1xeBGCVQ=
 github.com/creasty/defaults v1.8.0 h1:z27FJxCAa0JKt3utc0sCImAEb+spPucmKoOdLHvHYKk=
 github.com/creasty/defaults v1.8.0/go.mod h1:iGzKe6pbEHnpMPtfDXZEr0NVxWnPTjb1bbDy08fPzYM=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

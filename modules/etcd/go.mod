@@ -2,10 +2,8 @@ module github.com/codesjoy/yggdrasil-ecosystem/modules/etcd/v3
 
 go 1.25.7
 
-replace github.com/codesjoy/yggdrasil/v3 => ../../../yggdrasil
-
 require (
-	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.1
+	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2
 	github.com/mitchellh/mapstructure v1.5.0
 	go.etcd.io/etcd/api/v3 v3.6.8
 	go.etcd.io/etcd/client/v3 v3.6.8

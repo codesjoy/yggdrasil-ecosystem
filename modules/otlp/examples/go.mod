@@ -18,11 +18,9 @@ go 1.25.7
 
 replace github.com/codesjoy/yggdrasil-ecosystem/modules/otlp/v3 => ..
 
-replace github.com/codesjoy/yggdrasil/v3 => ../../../../yggdrasil
-
 require (
 	github.com/codesjoy/yggdrasil-ecosystem/modules/otlp/v3 v3.0.0
-	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.1
+	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2
 	go.opentelemetry.io/otel v1.39.0
 	go.opentelemetry.io/otel/metric v1.39.0
 	go.opentelemetry.io/otel/trace v1.39.0

@@ -4,12 +4,10 @@ go 1.25.7
 
 replace github.com/codesjoy/yggdrasil-ecosystem/modules/xds/v3 => ../
 
-replace github.com/codesjoy/yggdrasil/v3 => ../../../../yggdrasil
-
 require (
 	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622
 	github.com/codesjoy/yggdrasil-ecosystem/modules/xds/v3 v3.0.0-00010101000000-000000000000
-	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.1
+	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2
 	github.com/envoyproxy/go-control-plane v0.14.0
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/fsnotify/fsnotify v1.9.0
