@@ -1,0 +1,35 @@
+yggdrasil:
+  mode: dev
+  discovery:
+    resolvers:
+      xds:
+        type: xds
+        config:
+          name: default
+  balancers:
+    defaults:
+      xds:
+        type: xds
+        config: {}
+  clients:
+    services:
+      sample:
+        resolver: xds
+        balancer: xds
+  xds:
+    default:
+      config:
+        server:
+          address: "127.0.0.1:18000"
+          timeout: 5s
+        node:
+          id: "load-balancing-client"
+          cluster: "xds-examples"
+        protocol: grpc
+
+app:
+  example:
+    services:
+      - sample
+    requests: 12
+    name: lb

@@ -1,0 +1,6 @@
+server:
+  port: 18000
+  nodeID: "yggdrasil.example.xds.control-plane"
+
+xds:
+  watchInterval: 1s

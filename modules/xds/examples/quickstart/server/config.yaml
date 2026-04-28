@@ -1,0 +1,14 @@
+yggdrasil:
+  mode: dev
+  server:
+    transports:
+      - grpc
+  transports:
+    grpc:
+      server:
+        address: "127.0.0.1:56051"
+
+app:
+  example:
+    service: sample
+    greeting: hello from xDS quickstart

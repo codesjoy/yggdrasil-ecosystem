@@ -1,0 +1,15 @@
+yggdrasil:
+  mode: dev
+  server:
+    transports:
+      - grpc
+  transports:
+    grpc:
+      server:
+        address: "127.0.0.1:56061"
+
+app:
+  example:
+    service: sample
+    greeting: hello from xDS load balancing
+    instance: instance-a

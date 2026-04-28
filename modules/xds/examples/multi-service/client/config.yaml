@@ -1,0 +1,39 @@
+yggdrasil:
+  mode: dev
+  discovery:
+    resolvers:
+      xds:
+        type: xds
+        config:
+          name: default
+  balancers:
+    defaults:
+      xds:
+        type: xds
+        config: {}
+  clients:
+    services:
+      library:
+        resolver: xds
+        balancer: xds
+      greeter:
+        resolver: xds
+        balancer: xds
+  xds:
+    default:
+      config:
+        server:
+          address: "127.0.0.1:18000"
+          timeout: 5s
+        node:
+          id: "multi-service-client"
+          cluster: "xds-examples"
+        protocol: grpc
+
+app:
+  example:
+    services:
+      - library
+      - greeter
+    requests: 1
+    name: multi-service
