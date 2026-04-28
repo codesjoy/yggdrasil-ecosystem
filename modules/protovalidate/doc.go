@@ -12,18 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package protovalidate integrates Buf Protovalidate with Yggdrasil v3.
 package protovalidate
-
-import "github.com/codesjoy/yggdrasil/v2/config"
-
-// Config defines config-driven defaults for the Protovalidate integration.
-type Config struct {
-	FailFast bool `json:"failFast" mapstructure:"failFast" toml:"failFast" yaml:"failFast"`
-}
-
-// LoadConfig loads Protovalidate config for the given name from Yggdrasil config.
-func LoadConfig(name string) Config {
-	var cfg Config
-	_ = config.Get(config.Join(config.KeyBase, "protovalidate", name)).Scan(&cfg)
-	return cfg
-}

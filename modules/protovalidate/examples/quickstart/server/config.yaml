@@ -1,0 +1,24 @@
+yggdrasil:
+  mode: dev
+
+  protovalidate:
+    default:
+      failFast: false
+
+  server:
+    transports:
+      - "grpc"
+    interceptors:
+      unary:
+        - "protovalidate"
+      stream:
+        - "protovalidate"
+
+  transports:
+    grpc:
+      server:
+        address: "127.0.0.1:56121"
+
+  admin:
+    governor:
+      port: 56131

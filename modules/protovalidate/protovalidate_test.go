@@ -23,11 +23,13 @@ import (
 
 	validatepb "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	bufprotovalidate "buf.build/go/protovalidate"
-	"github.com/codesjoy/yggdrasil/v2/config"
-	"github.com/codesjoy/yggdrasil/v2/interceptor"
-	"github.com/codesjoy/yggdrasil/v2/metadata"
-	ystatus "github.com/codesjoy/yggdrasil/v2/status"
-	ystream "github.com/codesjoy/yggdrasil/v2/stream"
+	"github.com/codesjoy/yggdrasil/v3"
+	"github.com/codesjoy/yggdrasil/v3/capabilities"
+	"github.com/codesjoy/yggdrasil/v3/config"
+	"github.com/codesjoy/yggdrasil/v3/rpc/interceptor"
+	"github.com/codesjoy/yggdrasil/v3/rpc/metadata"
+	ystatus "github.com/codesjoy/yggdrasil/v3/rpc/status"
+	ystream "github.com/codesjoy/yggdrasil/v3/rpc/stream"
 	"google.golang.org/genproto/googleapis/rpc/code"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -71,35 +73,43 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestLoadConfig(t *testing.T) {
-	resetDefaultValidatorForTest()
-
-	if got := LoadConfig("missing"); got.FailFast {
-		t.Fatalf("LoadConfig(default).FailFast = true, want false")
+func TestModuleConfig(t *testing.T) {
+	mod, ok := Module().(*protovalidateModule)
+	if !ok {
+		t.Fatalf("Module() type = %T, want *protovalidateModule", Module())
 	}
 
-	setConfig(t, config.Join(config.KeyBase, "protovalidate", defaultConfigName), map[string]any{
-		"failFast": true,
-	})
+	if mod.Name() != capabilityName {
+		t.Fatalf("Name() = %q, want %q", mod.Name(), capabilityName)
+	}
+	if mod.ConfigPath() != "yggdrasil.protovalidate" {
+		t.Fatalf("ConfigPath() = %q, want yggdrasil.protovalidate", mod.ConfigPath())
+	}
 
-	if got := LoadConfig(defaultConfigName); !got.FailFast {
-		t.Fatal("LoadConfig(default).FailFast = false, want true")
+	view := config.NewView("yggdrasil.protovalidate", config.NewSnapshot(map[string]any{
+		"default": map[string]any{
+			"failFast": true,
+		},
+	}))
+	if err := mod.Init(context.Background(), view); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	if got := mod.defaultConfig(); !got.FailFast {
+		t.Fatal("defaultConfig().FailFast = false, want true")
 	}
 }
 
-func TestDefaultUnaryServerInterceptorReadsConfig(t *testing.T) {
+func TestModuleUnaryServerInterceptorReadsConfig(t *testing.T) {
 	desc := multiEmailRequestDescriptor(t)
 	info := &interceptor.UnaryServerInfo{FullMethod: "/test.user.v1.UserService/Create"}
 	req := newMultiEmailRequest(t, desc, "bad-primary", "bad-secondary")
 
 	t.Run("config off accumulates all violations", func(t *testing.T) {
-		resetDefaultValidatorForTest()
-		setConfig(t, config.Join(config.KeyBase, "protovalidate", defaultConfigName), map[string]any{
-			"failFast": false,
-		})
+		unary := moduleUnaryServerInterceptor(t, Config{FailFast: false})
 
 		handlerCalled := false
-		_, err := UnaryServerInterceptor(nil)(
+		_, err := unary(
 			context.Background(),
 			req,
 			info,
@@ -125,13 +135,10 @@ func TestDefaultUnaryServerInterceptorReadsConfig(t *testing.T) {
 	})
 
 	t.Run("config on fails fast", func(t *testing.T) {
-		resetDefaultValidatorForTest()
-		setConfig(t, config.Join(config.KeyBase, "protovalidate", defaultConfigName), map[string]any{
-			"failFast": true,
-		})
+		unary := moduleUnaryServerInterceptor(t, Config{FailFast: true})
 
 		handlerCalled := false
-		_, err := UnaryServerInterceptor(nil)(
+		_, err := unary(
 			context.Background(),
 			req,
 			info,
@@ -155,6 +162,78 @@ func TestDefaultUnaryServerInterceptorReadsConfig(t *testing.T) {
 			t.Fatalf("violations len = %d, want 1", got)
 		}
 	})
+}
+
+func TestModuleExposesV3Capabilities(t *testing.T) {
+	mod, ok := Module().(*protovalidateModule)
+	if !ok {
+		t.Fatalf("Module() type = %T, want *protovalidateModule", Module())
+	}
+
+	caps := mod.Capabilities()
+	want := map[string]bool{
+		capabilities.UnaryServerInterceptorSpec.Name + "/" + capabilityName:  false,
+		capabilities.StreamServerInterceptorSpec.Name + "/" + capabilityName: false,
+	}
+	for _, cap := range caps {
+		key := cap.Spec.Name + "/" + cap.Name
+		if _, ok := want[key]; ok {
+			want[key] = true
+		}
+	}
+	for key, seen := range want {
+		if !seen {
+			t.Fatalf("capability %s not exposed; got %#v", key, caps)
+		}
+	}
+}
+
+func TestWithModule(t *testing.T) {
+	if WithModule() == nil {
+		t.Fatal("WithModule() = nil")
+	}
+	app, err := yggdrasil.New("protovalidate-test", WithModule())
+	if err != nil {
+		t.Fatalf("yggdrasil.New() error = %v", err)
+	}
+	if app == nil {
+		t.Fatal("yggdrasil.New() app = nil")
+	}
+}
+
+func moduleUnaryServerInterceptor(
+	t *testing.T,
+	cfg Config,
+) interceptor.UnaryServerInterceptor {
+	t.Helper()
+
+	mod, ok := Module().(*protovalidateModule)
+	if !ok {
+		t.Fatalf("Module() type = %T, want *protovalidateModule", Module())
+	}
+	view := config.NewView("yggdrasil.protovalidate", config.NewSnapshot(map[string]any{
+		"default": map[string]any{
+			"failFast": cfg.FailFast,
+		},
+	}))
+	if err := mod.Init(context.Background(), view); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	for _, cap := range mod.Capabilities() {
+		if cap.Spec.Name != capabilities.UnaryServerInterceptorSpec.Name ||
+			cap.Name != capabilityName {
+			continue
+		}
+		provider, ok := cap.Value.(interceptor.UnaryServerInterceptorProvider)
+		if !ok {
+			t.Fatalf("unary provider type = %T", cap.Value)
+		}
+		return provider.New()
+	}
+
+	t.Fatal("protovalidate unary server interceptor provider not found")
+	return nil
 }
 
 func TestUnaryServerInterceptor(t *testing.T) {
@@ -264,7 +343,9 @@ func TestStreamServerInterceptor(t *testing.T) {
 		handlerCalled := false
 		err := streamInt(
 			struct{}{},
-			&mockServerStream{recv: recvDynamicMessage(t, newEmailRequest(t, desc, "user@example.com"))},
+			&mockServerStream{
+				recv: recvDynamicMessage(t, newEmailRequest(t, desc, "user@example.com")),
+			},
 			info,
 			func(_ interface{}, ss ystream.ServerStream) error {
 				handlerCalled = true
@@ -286,40 +367,45 @@ func TestStreamServerInterceptor(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid inbound stream message fails before business logic continues", func(t *testing.T) {
-		desc := emailRequestDescriptor(t)
-		businessContinued := false
-		err := streamInt(
-			struct{}{},
-			&mockServerStream{recv: recvDynamicMessage(t, newEmailRequest(t, desc, "not-an-email"))},
-			info,
-			func(_ interface{}, ss ystream.ServerStream) error {
-				msg := dynamicpb.NewMessage(desc)
-				if err := ss.RecvMsg(msg); err != nil {
-					return err
-				}
-				businessContinued = true
-				return nil
-			},
-		)
-		if err == nil {
-			t.Fatal("stream(invalid) error = nil, want invalid argument")
-		}
-		if businessContinued {
-			t.Fatal("business logic continued after invalid stream message")
-		}
+	t.Run(
+		"invalid inbound stream message fails before business logic continues",
+		func(t *testing.T) {
+			desc := emailRequestDescriptor(t)
+			businessContinued := false
+			err := streamInt(
+				struct{}{},
+				&mockServerStream{
+					recv: recvDynamicMessage(t, newEmailRequest(t, desc, "not-an-email")),
+				},
+				info,
+				func(_ interface{}, ss ystream.ServerStream) error {
+					msg := dynamicpb.NewMessage(desc)
+					if err := ss.RecvMsg(msg); err != nil {
+						return err
+					}
+					businessContinued = true
+					return nil
+				},
+			)
+			if err == nil {
+				t.Fatal("stream(invalid) error = nil, want invalid argument")
+			}
+			if businessContinued {
+				t.Fatal("business logic continued after invalid stream message")
+			}
 
-		st, ok := ystatus.CoverError(err)
-		if !ok {
-			t.Fatalf("CoverError(%T) ok = false", err)
-		}
-		if st.Code() != code.Code_INVALID_ARGUMENT {
-			t.Fatalf("status code = %v, want %v", st.Code(), code.Code_INVALID_ARGUMENT)
-		}
-		if got := len(extractViolations(t, st).GetViolations()); got != 1 {
-			t.Fatalf("violations len = %d, want 1", got)
-		}
-	})
+			st, ok := ystatus.CoverError(err)
+			if !ok {
+				t.Fatalf("CoverError(%T) ok = false", err)
+			}
+			if st.Code() != code.Code_INVALID_ARGUMENT {
+				t.Fatalf("status code = %v, want %v", st.Code(), code.Code_INVALID_ARGUMENT)
+			}
+			if got := len(extractViolations(t, st).GetViolations()); got != 1 {
+				t.Fatalf("violations len = %d, want 1", got)
+			}
+		},
+	)
 }
 
 func extractViolations(t *testing.T, st *ystatus.Status) *validatepb.Violations {
@@ -356,7 +442,11 @@ func recvDynamicMessage(t *testing.T, src proto.Message) func(any) error {
 	}
 }
 
-func newEmailRequest(t *testing.T, desc protoreflect.MessageDescriptor, email string) proto.Message {
+func newEmailRequest(
+	t *testing.T,
+	desc protoreflect.MessageDescriptor,
+	email string,
+) proto.Message {
 	t.Helper()
 
 	msg := dynamicpb.NewMessage(desc)
@@ -373,8 +463,14 @@ func newMultiEmailRequest(
 	t.Helper()
 
 	msg := dynamicpb.NewMessage(desc)
-	msg.Set(desc.Fields().ByName(protoreflect.Name("primary_email")), protoreflect.ValueOfString(primary))
-	msg.Set(desc.Fields().ByName(protoreflect.Name("secondary_email")), protoreflect.ValueOfString(secondary))
+	msg.Set(
+		desc.Fields().ByName(protoreflect.Name("primary_email")),
+		protoreflect.ValueOfString(primary),
+	)
+	msg.Set(
+		desc.Fields().ByName(protoreflect.Name("secondary_email")),
+		protoreflect.ValueOfString(secondary),
+	)
 	return msg
 }
 
@@ -469,13 +565,6 @@ func emailFieldOptions() *descriptorpb.FieldOptions {
 	}).Build()
 	proto.SetExtension(fieldOptions, validatepb.E_Field, fieldRules)
 	return fieldOptions
-}
-
-func setConfig(t *testing.T, key string, value any) {
-	t.Helper()
-	if err := config.Set(key, value); err != nil {
-		t.Fatalf("config.Set(%q) error = %v", key, err)
-	}
 }
 
 type mockServerStream struct {

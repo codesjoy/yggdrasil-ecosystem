@@ -1,0 +1,9 @@
+yggdrasil:
+  mode: dev
+  clients:
+    services:
+      github.com.codesjoy.yggdrasil-ecosystem.modules.protovalidate.examples.quickstart:
+        remote:
+          endpoints:
+            - address: "127.0.0.1:56121"
+              protocol: "grpc"

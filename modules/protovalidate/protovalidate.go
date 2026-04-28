@@ -21,9 +21,9 @@ import (
 	"sync"
 
 	bufprotovalidate "buf.build/go/protovalidate"
-	"github.com/codesjoy/yggdrasil/v2/interceptor"
-	ystatus "github.com/codesjoy/yggdrasil/v2/status"
-	"github.com/codesjoy/yggdrasil/v2/stream"
+	"github.com/codesjoy/yggdrasil/v3/rpc/interceptor"
+	ystatus "github.com/codesjoy/yggdrasil/v3/rpc/status"
+	"github.com/codesjoy/yggdrasil/v3/rpc/stream"
 	"google.golang.org/genproto/googleapis/rpc/code"
 	"google.golang.org/protobuf/proto"
 )
@@ -32,14 +32,6 @@ import (
 type Validator interface {
 	Validate(proto.Message, ...bufprotovalidate.ValidationOption) error
 }
-
-const defaultConfigName = "default"
-
-var (
-	defaultValidatorOnce sync.Once
-	defaultValidator     Validator
-	defaultValidatorErr  error
-)
 
 // New creates a reusable Protovalidate validator.
 func New(options ...bufprotovalidate.ValidatorOption) (Validator, error) {
@@ -53,13 +45,19 @@ func Validate(msg proto.Message, options ...bufprotovalidate.ValidationOption) e
 
 // UnaryServerInterceptor validates unary inbound protobuf requests.
 func UnaryServerInterceptor(validator Validator) interceptor.UnaryServerInterceptor {
+	return unaryServerInterceptor(
+		newValidatorResolver(validator, func() Config { return Config{} }),
+	)
+}
+
+func unaryServerInterceptor(resolver *validatorResolver) interceptor.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
 		req any,
 		_ *interceptor.UnaryServerInfo,
 		handler interceptor.UnaryHandler,
 	) (any, error) {
-		resolved, err := resolveValidator(validator)
+		resolved, err := resolver.resolve()
 		if err != nil {
 			return nil, internalStatusError("initialize protovalidate validator", err)
 		}
@@ -72,13 +70,19 @@ func UnaryServerInterceptor(validator Validator) interceptor.UnaryServerIntercep
 
 // StreamServerInterceptor validates each inbound message received from a stream.
 func StreamServerInterceptor(validator Validator) interceptor.StreamServerInterceptor {
+	return streamServerInterceptor(
+		newValidatorResolver(validator, func() Config { return Config{} }),
+	)
+}
+
+func streamServerInterceptor(resolver *validatorResolver) interceptor.StreamServerInterceptor {
 	return func(
 		srv interface{},
 		ss stream.ServerStream,
 		_ *interceptor.StreamServerInfo,
 		handler stream.Handler,
 	) error {
-		resolved, err := resolveValidator(validator)
+		resolved, err := resolver.resolve()
 		if err != nil {
 			return internalStatusError("initialize protovalidate validator", err)
 		}
@@ -101,16 +105,36 @@ func (s *validatingServerStream) RecvMsg(msg any) error {
 	return validateRequest(s.validator, msg)
 }
 
-func resolveValidator(validator Validator) (Validator, error) {
-	if validator != nil {
-		return validator, nil
+type validatorResolver struct {
+	validator Validator
+	config    func() Config
+
+	once     sync.Once
+	resolved Validator
+	err      error
+}
+
+func newValidatorResolver(validator Validator, config func() Config) *validatorResolver {
+	return &validatorResolver{
+		validator: validator,
+		config:    config,
+	}
+}
+
+func (r *validatorResolver) resolve() (Validator, error) {
+	if r.validator != nil {
+		return r.validator, nil
 	}
 
-	defaultValidatorOnce.Do(func() {
-		defaultValidator, defaultValidatorErr = New(defaultValidatorOptions(LoadConfig(defaultConfigName))...)
+	r.once.Do(func() {
+		cfg := Config{}
+		if r.config != nil {
+			cfg = r.config()
+		}
+		r.resolved, r.err = New(defaultValidatorOptions(cfg)...)
 	})
 
-	return defaultValidator, defaultValidatorErr
+	return r.resolved, r.err
 }
 
 func defaultValidatorOptions(cfg Config) []bufprotovalidate.ValidatorOption {

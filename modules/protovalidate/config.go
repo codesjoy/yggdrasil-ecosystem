@@ -14,13 +14,7 @@
 
 package protovalidate
 
-import "github.com/codesjoy/yggdrasil/v2/interceptor"
-
-func init() {
-	interceptor.RegisterUnaryServerIntBuilder("protovalidate", func() interceptor.UnaryServerInterceptor {
-		return UnaryServerInterceptor(nil)
-	})
-	interceptor.RegisterStreamServerIntBuilder("protovalidate", func() interceptor.StreamServerInterceptor {
-		return StreamServerInterceptor(nil)
-	})
+// Config defines config-driven defaults for the Protovalidate module.
+type Config struct {
+	FailFast bool `json:"failFast" mapstructure:"failFast" toml:"failFast" yaml:"failFast"`
 }
