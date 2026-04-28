@@ -1,26 +1,26 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repo is a Go multi-module monorepo for Yggdrasil ecosystem integrations.
-- `integrations/{etcd,k8s,otlp,polaris,xds}`: primary integration libraries (each has its own `go.mod`).
-- `integrations/*/example`: runnable sample apps and configs for each integration.
-- `examples/protogen`: generated protobuf artifacts used for demos and compatibility checks.
+This repo is a Go multi-module monorepo for Yggdrasil ecosystem modules.
+- `modules/*`: Yggdrasil v3 capability modules (each has its own `go.mod`).
+- `modules/*/examples`: v3-compilable sample apps and configs.
 - `scripts/make-rules`: shared Make targets; `scripts/hooks`: commit/branch policy checks.
+- `go.work` and `go.work.sum`: generated workspace metadata managed via `make sync`.
 
 ## Build, Test, and Development Commands
 Use the root `Makefile` for all routine workflows:
 - `make tools`: install required tools and pre-commit hooks.
 - `make sync`: generate/update `go.work` from discovered modules.
 - `make tidy`: run `go mod tidy` across all modules.
-- `make fmt && make lint`: format and lint all modules.
-- `make test` / `make coverage`: run tests (coverage gate defaults to `COVERAGE=60`).
+- `make fmt`, `make lint`: format and lint all modules.
+- `make test` / `make coverage`: run tests (coverage gate defaults to `COVERAGE=80`).
 - `make test INCLUDE_EXAMPLES=1`: include example modules in test runs.
 
 ## Coding Style & Naming Conventions
 - Go formatting is enforced via `make fmt` (`gofumpt`, `goimports`, `golines --max-len=100`).
 - Keep package names lowercase and concise; avoid underscores in package names.
 - Exported Go identifiers should include GoDoc comments (enforced by `revive`).
-- Keep module APIs in integration roots; place demo-only code under `example/`.
+- Keep module APIs in module roots; place demo-only code under `examples/`.
 - Shell scripts should be Bash with strict mode (`errexit`, `nounset`, `pipefail`).
 
 ## Testing Guidelines

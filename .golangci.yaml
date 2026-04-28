@@ -58,12 +58,11 @@ linters:
         linters:
           - revive
         text: "unused-parameter:"
-      - path: example/
+      - path: examples/
         linters:
           - errcheck
           - noctx
           - unused
-
 formatters:
   enable:
     - gofmt
