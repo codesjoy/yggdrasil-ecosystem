@@ -19,8 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/codesjoy/yggdrasil/v2/config"
-	xotel "github.com/codesjoy/yggdrasil/v2/otel"
+	xotel "github.com/codesjoy/yggdrasil/v3/observability/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -32,6 +31,7 @@ import (
 // NewTracerProvider creates a new OTLP tracer provider.
 func NewTracerProvider(serviceName string, cfg TraceExporterConfig) (trace.TracerProvider, error) {
 	ctx := context.Background()
+	cfg = applyTraceDefaults(cfg)
 
 	var (
 		exporter sdktrace.SpanExporter
@@ -114,7 +114,10 @@ func createHTTPTraceExporter(
 	ctx context.Context,
 	cfg TraceExporterConfig,
 ) (sdktrace.SpanExporter, error) {
-	opts := createHTTPTraceClientOptions(cfg)
+	opts, err := createHTTPTraceClientOptions(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP client options: %w", err)
+	}
 
 	exporter, err := otlptracehttp.New(ctx, opts...)
 	if err != nil {
@@ -125,8 +128,8 @@ func createHTTPTraceExporter(
 }
 
 // newGRPCTracerProvider creates a gRPC tracer provider from config.
-func newGRPCTracerProvider(serviceName string) trace.TracerProvider {
-	cfg := loadTraceConfig()
+func (m *otlpModule) newGRPCTracerProvider(serviceName string) trace.TracerProvider {
+	cfg := m.traceConfig()
 	cfg.Protocol = "grpc"
 
 	if cfg.Endpoint == "" {
@@ -144,8 +147,8 @@ func newGRPCTracerProvider(serviceName string) trace.TracerProvider {
 }
 
 // newHTTPTracerProvider creates an HTTP tracer provider from config.
-func newHTTPTracerProvider(serviceName string) trace.TracerProvider {
-	cfg := loadTraceConfig()
+func (m *otlpModule) newHTTPTracerProvider(serviceName string) trace.TracerProvider {
+	cfg := m.traceConfig()
 	cfg.Protocol = "http"
 
 	if cfg.Endpoint == "" {
@@ -162,15 +165,7 @@ func newHTTPTracerProvider(serviceName string) trace.TracerProvider {
 	return tp
 }
 
-// loadTraceConfig loads trace configuration from global config.
-func loadTraceConfig() TraceExporterConfig {
-	cfgKey := config.Join(config.KeyBase, "otlp", "trace")
-	cfgVal := config.Get(cfgKey)
-
-	var cfg TraceExporterConfig
-	_ = cfgVal.Scan(&cfg)
-
-	// Apply defaults
+func applyTraceDefaults(cfg TraceExporterConfig) TraceExporterConfig {
 	if cfg.Batch.BatchTimeout == 0 {
 		cfg.Batch.BatchTimeout = defaultBatchTimeout
 	}
@@ -194,40 +189,4 @@ func loadTraceConfig() TraceExporterConfig {
 	}
 
 	return cfg
-}
-
-// buildResourceAttributes builds OpenTelemetry resource attributes.
-func buildResourceAttributes(
-	serviceName string,
-	customAttrs map[string]interface{},
-) map[string]any {
-	attrs := make(map[string]any)
-
-	// Standard service attributes
-	attrs["service.name"] = serviceName
-
-	// Add custom attributes
-	for k, v := range customAttrs {
-		attrs[k] = v
-	}
-
-	return attrs
-}
-
-const (
-	defaultGRPCEndpoint       = "localhost:4317"
-	defaultHTTPEndpoint       = "localhost:4318"
-	defaultBatchTimeout       = 5 * 1000 * 1000 * 1000 // 5s in nanoseconds
-	defaultMaxQueueSize       = 2048
-	defaultMaxExportBatchSize = 512
-	defaultTimeout            = 30 * 1000 * 1000 * 1000 // 30s in nanoseconds
-	defaultRetryInitialDelay  = 100 * 1000 * 1000       // 100ms in nanoseconds
-	defaultRetryMaxDelay      = 5 * 1000 * 1000 * 1000  // 5s in nanoseconds
-	defaultMaxAttempts        = 5
-)
-
-func init() {
-	// Register trace exporters
-	xotel.RegisterTracerProviderBuilder("otlp-grpc", newGRPCTracerProvider)
-	xotel.RegisterTracerProviderBuilder("otlp-http", newHTTPTracerProvider)
 }

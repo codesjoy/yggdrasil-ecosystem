@@ -1,0 +1,41 @@
+# Yggdrasil OTLP gRPC quickstart example.
+
+yggdrasil:
+  observability:
+    logging:
+      handlers:
+        default:
+          type: console
+          config:
+            level: info
+            format: text
+
+    telemetry:
+      tracer: otlp-grpc
+      meter: otlp-grpc
+      providers:
+        otlp:
+          trace:
+            protocol: grpc
+            endpoint: localhost:4317
+            tls:
+              insecure: true
+            timeout: 30s
+            batch:
+              batchTimeout: 2s
+              maxQueueSize: 2048
+              maxExportBatchSize: 512
+            resource:
+              deployment.environment: local
+              service.version: 1.0.0
+          metric:
+            protocol: grpc
+            endpoint: localhost:4317
+            tls:
+              insecure: true
+            timeout: 30s
+            exportInterval: 5s
+            exportTimeout: 10s
+            resource:
+              deployment.environment: local
+              service.version: 1.0.0

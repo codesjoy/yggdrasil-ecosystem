@@ -1,0 +1,62 @@
+# Yggdrasil OTLP resource, headers, compression, and retry example.
+
+yggdrasil:
+  observability:
+    logging:
+      handlers:
+        default:
+          type: console
+          config:
+            level: info
+            format: text
+
+    telemetry:
+      tracer: otlp-grpc
+      meter: otlp-grpc
+      providers:
+        otlp:
+          trace:
+            protocol: grpc
+            endpoint: localhost:4317
+            tls:
+              insecure: true
+            headers:
+              x-example-scenario: resource-retry
+            timeout: 15s
+            compression: gzip
+            retry:
+              enabled: true
+              maxAttempts: 5
+              initialDelay: 100ms
+              maxDelay: 5s
+            batch:
+              batchTimeout: 2s
+              maxQueueSize: 4096
+              maxExportBatchSize: 512
+            resource:
+              deployment.environment: local
+              service.version: 1.1.0
+              service.namespace: yggdrasil-examples
+              example.scenario: resource-retry
+          metric:
+            protocol: grpc
+            endpoint: localhost:4317
+            tls:
+              insecure: true
+            headers:
+              x-example-scenario: resource-retry
+            timeout: 15s
+            compression: gzip
+            retry:
+              enabled: true
+              maxAttempts: 5
+              initialDelay: 100ms
+              maxDelay: 5s
+            exportInterval: 5s
+            exportTimeout: 10s
+            temporality: cumulative
+            resource:
+              deployment.environment: local
+              service.version: 1.1.0
+              service.namespace: yggdrasil-examples
+              example.scenario: resource-retry

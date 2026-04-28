@@ -15,18 +15,12 @@
 package otlp
 
 import (
-	"crypto/tls"
-	"crypto/x509"
-	"os"
 	"time"
 
 	otlpmetricgrpc "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	otlpmetrichttp "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // createGRPCTraceClientOptions creates gRPC client options for trace exporter.
@@ -58,8 +52,8 @@ func createGRPCTraceClientOptions(cfg TraceExporterConfig) ([]otlptracegrpc.Opti
 		// Unknown compression, use default
 	}
 
-	// Configure TLS/retry options
-	grpcOpts, err := createGRPCDialOptions(cfg.TLS, cfg.Retry)
+	// Configure TLS
+	grpcOpts, err := createGRPCDialOptions(cfg.TLS)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +76,7 @@ func createGRPCTraceClientOptions(cfg TraceExporterConfig) ([]otlptracegrpc.Opti
 }
 
 // createHTTPTraceClientOptions creates HTTP client options for trace exporter.
-func createHTTPTraceClientOptions(cfg TraceExporterConfig) []otlptracehttp.Option {
+func createHTTPTraceClientOptions(cfg TraceExporterConfig) ([]otlptracehttp.Option, error) {
 	var opts []otlptracehttp.Option
 
 	// Set endpoint
@@ -111,10 +105,11 @@ func createHTTPTraceClientOptions(cfg TraceExporterConfig) []otlptracehttp.Optio
 	}
 
 	// Configure TLS
-	tlsClientOpt := createHTTPClientTLSOption(cfg.TLS)
-	if tlsClientOpt != nil {
-		opts = append(opts, tlsClientOpt)
+	tlsClientOpt, err := createHTTPClientTLSOption(cfg.TLS)
+	if err != nil {
+		return nil, err
 	}
+	opts = append(opts, tlsClientOpt)
 
 	// Configure retry
 	if cfg.Retry.Enabled {
@@ -127,7 +122,7 @@ func createHTTPTraceClientOptions(cfg TraceExporterConfig) []otlptracehttp.Optio
 		opts = append(opts, otlptracehttp.WithRetry(backoff))
 	}
 
-	return opts
+	return opts, nil
 }
 
 // createGRPCMeterClientOptions creates gRPC client options for metrics exporter.
@@ -159,8 +154,8 @@ func createGRPCMeterClientOptions(cfg MetricExporterConfig) ([]otlpmetricgrpc.Op
 		// Unknown compression, use default
 	}
 
-	// Configure TLS/retry options
-	grpcOpts, err := createGRPCDialOptions(cfg.TLS, cfg.Retry)
+	// Configure TLS
+	grpcOpts, err := createGRPCDialOptions(cfg.TLS)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +178,7 @@ func createGRPCMeterClientOptions(cfg MetricExporterConfig) ([]otlpmetricgrpc.Op
 }
 
 // createHTTPMeterClientOptions creates HTTP client options for metrics exporter.
-func createHTTPMeterClientOptions(cfg MetricExporterConfig) []otlpmetrichttp.Option {
+func createHTTPMeterClientOptions(cfg MetricExporterConfig) ([]otlpmetrichttp.Option, error) {
 	var opts []otlpmetrichttp.Option
 
 	// Set endpoint
@@ -212,10 +207,11 @@ func createHTTPMeterClientOptions(cfg MetricExporterConfig) []otlpmetrichttp.Opt
 	}
 
 	// Configure TLS
-	tlsClientOpt := createHTTPMetricClientTLSOption(cfg.TLS)
-	if tlsClientOpt != nil {
-		opts = append(opts, tlsClientOpt)
+	tlsClientOpt, err := createHTTPMetricClientTLSOption(cfg.TLS)
+	if err != nil {
+		return nil, err
 	}
+	opts = append(opts, tlsClientOpt)
 
 	// Configure retry
 	if cfg.Retry.Enabled {
@@ -228,120 +224,5 @@ func createHTTPMeterClientOptions(cfg MetricExporterConfig) []otlpmetrichttp.Opt
 		opts = append(opts, otlpmetrichttp.WithRetry(backoff))
 	}
 
-	return opts
-}
-
-// createGRPCDialOptions creates gRPC dial options based on TLS and retry config.
-func createGRPCDialOptions(tlsCfg TLSConfig, _ RetryConfig) ([]grpc.DialOption, error) {
-	var opts []grpc.DialOption
-
-	switch {
-	case tlsCfg.Insecure:
-		// Skip TLS verification (for development)
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	case tlsCfg.Enabled:
-		// TLS with custom certificates
-		tlsConfig := &tls.Config{} // nolint:gosec
-
-		if tlsCfg.CAFile != "" {
-			caCert, err := os.ReadFile(tlsCfg.CAFile)
-			if err != nil {
-				return nil, err
-			}
-			caCertPool := x509.NewCertPool()
-			caCertPool.AppendCertsFromPEM(caCert)
-			tlsConfig.RootCAs = caCertPool
-		}
-
-		if tlsCfg.CertFile != "" && tlsCfg.KeyFile != "" {
-			cert, err := tls.LoadX509KeyPair(tlsCfg.CertFile, tlsCfg.KeyFile)
-			if err != nil {
-				return nil, err
-			}
-			tlsConfig.Certificates = []tls.Certificate{cert}
-		}
-
-		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
-	default:
-		// Default to insecure for development
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	}
-
 	return opts, nil
-}
-
-// createHTTPClientTLSOption creates TLS option for HTTP clients.
-func createHTTPClientTLSOption(tlsCfg TLSConfig) otlptracehttp.Option {
-	if tlsCfg.Insecure {
-		return otlptracehttp.WithInsecure()
-	}
-
-	if tlsCfg.Enabled {
-		tlsConfig := &tls.Config{} // nolint:gosec
-
-		if tlsCfg.CAFile != "" {
-			caCert, err := os.ReadFile(tlsCfg.CAFile)
-			if err == nil {
-				caCertPool := x509.NewCertPool()
-				caCertPool.AppendCertsFromPEM(caCert)
-				tlsConfig.RootCAs = caCertPool
-			}
-		}
-
-		if tlsCfg.CertFile != "" && tlsCfg.KeyFile != "" {
-			cert, err := tls.LoadX509KeyPair(tlsCfg.CertFile, tlsCfg.KeyFile)
-			if err == nil {
-				tlsConfig.Certificates = []tls.Certificate{cert}
-			}
-		}
-
-		return otlptracehttp.WithTLSClientConfig(tlsConfig)
-	}
-
-	// Default to insecure for development
-	return otlptracehttp.WithInsecure()
-}
-
-// createHTTPMetricClientTLSOption creates TLS option for HTTP metric clients.
-func createHTTPMetricClientTLSOption(tlsCfg TLSConfig) otlpmetrichttp.Option {
-	if tlsCfg.Insecure {
-		return otlpmetrichttp.WithInsecure()
-	}
-
-	if tlsCfg.Enabled {
-		tlsConfig := &tls.Config{} // nolint:gosec
-
-		if tlsCfg.CAFile != "" {
-			caCert, err := os.ReadFile(tlsCfg.CAFile)
-			if err == nil {
-				caCertPool := x509.NewCertPool()
-				caCertPool.AppendCertsFromPEM(caCert)
-				tlsConfig.RootCAs = caCertPool
-			}
-		}
-
-		if tlsCfg.CertFile != "" && tlsCfg.KeyFile != "" {
-			cert, err := tls.LoadX509KeyPair(tlsCfg.CertFile, tlsCfg.KeyFile)
-			if err == nil {
-				tlsConfig.Certificates = []tls.Certificate{cert}
-			}
-		}
-
-		return otlpmetrichttp.WithTLSClientConfig(tlsConfig)
-	}
-
-	// Default to insecure for development
-	return otlpmetrichttp.WithInsecure()
-}
-
-// getMetricTemporality converts string to metric temporality.
-func getMetricTemporality(temporality string) string {
-	switch temporality {
-	case "delta":
-		return "delta"
-	case "cumulative", "":
-		return "cumulative"
-	default:
-		return "cumulative"
-	}
 }

@@ -18,8 +18,6 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	"github.com/codesjoy/yggdrasil/v2/config"
 )
 
 func TestClientOptionBuilders(t *testing.T) {
@@ -60,7 +58,10 @@ func TestClientOptionBuilders(t *testing.T) {
 		t.Fatal("createGRPCTraceClientOptions() returned no options")
 	}
 
-	httpTraceOpts := createHTTPTraceClientOptions(traceCfg)
+	httpTraceOpts, err := createHTTPTraceClientOptions(traceCfg)
+	if err != nil {
+		t.Fatalf("createHTTPTraceClientOptions() error = %v", err)
+	}
 	if len(httpTraceOpts) == 0 {
 		t.Fatal("createHTTPTraceClientOptions() returned no options")
 	}
@@ -73,7 +74,10 @@ func TestClientOptionBuilders(t *testing.T) {
 		t.Fatal("createGRPCMeterClientOptions() returned no options")
 	}
 
-	httpMetricOpts := createHTTPMeterClientOptions(metricCfg)
+	httpMetricOpts, err := createHTTPMeterClientOptions(metricCfg)
+	if err != nil {
+		t.Fatalf("createHTTPMeterClientOptions() error = %v", err)
+	}
 	if len(httpMetricOpts) == 0 {
 		t.Fatal("createHTTPMeterClientOptions() returned no options")
 	}
@@ -106,7 +110,7 @@ func TestCreateGRPCDialOptions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts, err := createGRPCDialOptions(tt.cfg, RetryConfig{})
+			opts, err := createGRPCDialOptions(tt.cfg)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("createGRPCDialOptions() expected error")
@@ -124,17 +128,31 @@ func TestCreateGRPCDialOptions(t *testing.T) {
 }
 
 func TestHTTPClientTLSOptionHelpers(t *testing.T) {
-	if opt := createHTTPClientTLSOption(TLSConfig{Insecure: true}); opt == nil {
+	if opt, err := createHTTPClientTLSOption(TLSConfig{Insecure: true}); err != nil || opt == nil {
 		t.Fatal("createHTTPClientTLSOption() returned nil for insecure config")
 	}
-	if opt := createHTTPClientTLSOption(TLSConfig{Enabled: true}); opt == nil {
+	if opt, err := createHTTPClientTLSOption(TLSConfig{Enabled: true}); err != nil || opt == nil {
 		t.Fatal("createHTTPClientTLSOption() returned nil for TLS config")
 	}
-	if opt := createHTTPMetricClientTLSOption(TLSConfig{Insecure: true}); opt == nil {
+	if _, err := createHTTPClientTLSOption(TLSConfig{
+		Enabled: true,
+		CAFile:  "/definitely/missing-ca.pem",
+	}); err == nil {
+		t.Fatal("createHTTPClientTLSOption() expected error for missing CA file")
+	}
+	if opt, err := createHTTPMetricClientTLSOption(TLSConfig{Insecure: true}); err != nil ||
+		opt == nil {
 		t.Fatal("createHTTPMetricClientTLSOption() returned nil for insecure config")
 	}
-	if opt := createHTTPMetricClientTLSOption(TLSConfig{Enabled: true}); opt == nil {
+	if opt, err := createHTTPMetricClientTLSOption(TLSConfig{Enabled: true}); err != nil ||
+		opt == nil {
 		t.Fatal("createHTTPMetricClientTLSOption() returned nil for TLS config")
+	}
+	if _, err := createHTTPMetricClientTLSOption(TLSConfig{
+		Enabled: true,
+		CAFile:  "/definitely/missing-ca.pem",
+	}); err == nil {
+		t.Fatal("createHTTPMetricClientTLSOption() expected error for missing CA file")
 	}
 }
 
@@ -169,26 +187,10 @@ func TestExporterFactories(t *testing.T) {
 }
 
 func TestLoadConfigsAndProviderFallbacks(t *testing.T) {
-	setConfig := func(t *testing.T, key string, value any) {
-		t.Helper()
-		if err := config.Set(key, value); err != nil {
-			t.Fatalf("config.Set(%q) error = %v", key, err)
-		}
-	}
-
-	traceBase := config.Join(config.KeyBase, "otlp", "trace")
-	setConfig(t, config.Join(traceBase, "batch", "batchTimeout"), 0)
-	setConfig(t, config.Join(traceBase, "batch", "maxQueueSize"), 0)
-	setConfig(t, config.Join(traceBase, "batch", "maxExportBatchSize"), 0)
-	setConfig(t, config.Join(traceBase, "timeout"), 0)
-	setConfig(t, config.Join(traceBase, "retry", "enabled"), true)
-	setConfig(t, config.Join(traceBase, "retry", "initialDelay"), 0)
-	setConfig(t, config.Join(traceBase, "retry", "maxDelay"), 0)
-	setConfig(t, config.Join(traceBase, "retry", "maxAttempts"), 0)
-	setConfig(t, config.Join(traceBase, "tls", "enabled"), true)
-	setConfig(t, config.Join(traceBase, "tls", "caFile"), "/definitely/missing-ca.pem")
-
-	traceCfg := loadTraceConfig()
+	traceCfg := applyTraceDefaults(TraceExporterConfig{
+		Retry: RetryConfig{Enabled: true},
+		TLS:   TLSConfig{Enabled: true, CAFile: "/definitely/missing-ca.pem"},
+	})
 	if traceCfg.Batch.BatchTimeout != defaultBatchTimeout {
 		t.Fatalf("BatchTimeout = %v, want %v", traceCfg.Batch.BatchTimeout, defaultBatchTimeout)
 	}
@@ -219,18 +221,10 @@ func TestLoadConfigsAndProviderFallbacks(t *testing.T) {
 		t.Fatalf("MaxAttempts = %d, want %d", traceCfg.Retry.MaxAttempts, defaultMaxAttempts)
 	}
 
-	metricBase := config.Join(config.KeyBase, "otlp", "metric")
-	setConfig(t, config.Join(metricBase, "exportInterval"), 0)
-	setConfig(t, config.Join(metricBase, "exportTimeout"), 0)
-	setConfig(t, config.Join(metricBase, "timeout"), 0)
-	setConfig(t, config.Join(metricBase, "retry", "enabled"), true)
-	setConfig(t, config.Join(metricBase, "retry", "initialDelay"), 0)
-	setConfig(t, config.Join(metricBase, "retry", "maxDelay"), 0)
-	setConfig(t, config.Join(metricBase, "retry", "maxAttempts"), 0)
-	setConfig(t, config.Join(metricBase, "tls", "enabled"), true)
-	setConfig(t, config.Join(metricBase, "tls", "caFile"), "/definitely/missing-ca.pem")
-
-	metricCfg := loadMetricConfig()
+	metricCfg := applyMetricDefaults(MetricExporterConfig{
+		Retry: RetryConfig{Enabled: true},
+		TLS:   TLSConfig{Enabled: true, CAFile: "/definitely/missing-ca.pem"},
+	})
 	if metricCfg.ExportInterval != defaultExportInterval {
 		t.Fatalf("ExportInterval = %v, want %v", metricCfg.ExportInterval, defaultExportInterval)
 	}
@@ -254,16 +248,22 @@ func TestLoadConfigsAndProviderFallbacks(t *testing.T) {
 		t.Fatalf("MaxAttempts = %d, want %d", metricCfg.Retry.MaxAttempts, defaultMaxAttempts)
 	}
 
-	if got := newGRPCTracerProvider("trace-service"); got == nil {
+	mod := &otlpModule{
+		settings: Config{
+			Trace:  traceCfg,
+			Metric: metricCfg,
+		},
+	}
+	if got := mod.newGRPCTracerProvider("trace-service"); got == nil {
 		t.Fatal("newGRPCTracerProvider() returned nil")
 	}
-	if got := newHTTPTracerProvider("trace-service"); got == nil {
+	if got := mod.newHTTPTracerProvider("trace-service"); got == nil {
 		t.Fatal("newHTTPTracerProvider() returned nil")
 	}
-	if got := newGRPCMeterProvider("metric-service"); got == nil {
+	if got := mod.newGRPCMeterProvider("metric-service"); got == nil {
 		t.Fatal("newGRPCMeterProvider() returned nil")
 	}
-	if got := newHTTPMeterProvider("metric-service"); got == nil {
+	if got := mod.newHTTPMeterProvider("metric-service"); got == nil {
 		t.Fatal("newHTTPMeterProvider() returned nil")
 	}
 }

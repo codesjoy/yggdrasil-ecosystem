@@ -19,8 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/codesjoy/yggdrasil/v2/config"
-	xotel "github.com/codesjoy/yggdrasil/v2/otel"
+	xotel "github.com/codesjoy/yggdrasil/v3/observability/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/metric"
@@ -34,6 +33,7 @@ func NewMeterProvider(
 	cfg MetricExporterConfig,
 ) (*sdkmetric.MeterProvider, error) {
 	ctx := context.Background()
+	cfg = applyMetricDefaults(cfg)
 
 	var (
 		exporter sdkmetric.Exporter
@@ -115,7 +115,10 @@ func createHTTPMeterExporter(
 	ctx context.Context,
 	cfg MetricExporterConfig,
 ) (sdkmetric.Exporter, error) {
-	opts := createHTTPMeterClientOptions(cfg)
+	opts, err := createHTTPMeterClientOptions(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP client options: %w", err)
+	}
 
 	exporter, err := otlpmetrichttp.New(ctx, opts...)
 	if err != nil {
@@ -126,8 +129,8 @@ func createHTTPMeterExporter(
 }
 
 // newGRPCMeterProvider creates a gRPC meter provider from config.
-func newGRPCMeterProvider(serviceName string) metric.MeterProvider {
-	cfg := loadMetricConfig()
+func (m *otlpModule) newGRPCMeterProvider(serviceName string) metric.MeterProvider {
+	cfg := m.metricConfig()
 	cfg.Protocol = "grpc"
 
 	if cfg.Endpoint == "" {
@@ -146,8 +149,8 @@ func newGRPCMeterProvider(serviceName string) metric.MeterProvider {
 }
 
 // newHTTPMeterProvider creates an HTTP meter provider from config.
-func newHTTPMeterProvider(serviceName string) metric.MeterProvider {
-	cfg := loadMetricConfig()
+func (m *otlpModule) newHTTPMeterProvider(serviceName string) metric.MeterProvider {
+	cfg := m.metricConfig()
 	cfg.Protocol = "http"
 
 	if cfg.Endpoint == "" {
@@ -165,15 +168,7 @@ func newHTTPMeterProvider(serviceName string) metric.MeterProvider {
 	return mp
 }
 
-// loadMetricConfig loads metric configuration from global config.
-func loadMetricConfig() MetricExporterConfig {
-	cfgKey := config.Join(config.KeyBase, "otlp", "metric")
-	cfgVal := config.Get(cfgKey)
-
-	var cfg MetricExporterConfig
-	_ = cfgVal.Scan(&cfg)
-
-	// Apply defaults
+func applyMetricDefaults(cfg MetricExporterConfig) MetricExporterConfig {
 	if cfg.ExportInterval == 0 {
 		cfg.ExportInterval = defaultExportInterval
 	}
@@ -194,15 +189,4 @@ func loadMetricConfig() MetricExporterConfig {
 	}
 
 	return cfg
-}
-
-const (
-	defaultExportInterval = 60 * 1000 * 1000 * 1000 // 60s in nanoseconds
-	defaultExportTimeout  = 30 * 1000 * 1000 * 1000 // 30s in nanoseconds
-)
-
-func init() {
-	// Register metrics exporters
-	xotel.RegisterMeterProviderBuilder("otlp-grpc", newGRPCMeterProvider)
-	xotel.RegisterMeterProviderBuilder("otlp-http", newHTTPMeterProvider)
 }

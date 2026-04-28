@@ -1,0 +1,77 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  filelog:
+    include:
+      - /var/log/otlp-examples/*.jsonl
+    start_at: beginning
+    include_file_path: true
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.time
+          layout_type: gotime
+          layout: "2006-01-02T15:04:05.999999999Z07:00"
+        severity:
+          parse_from: attributes.level
+
+processors:
+  batch:
+    timeout: 1s
+
+  transform/logs:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          - set(resource.attributes["service.name"], attributes["service.name"]) where attributes["service.name"] != nil
+          - set(resource.attributes["deployment.environment"], attributes["deployment.environment"]) where attributes["deployment.environment"] != nil
+          - set(resource.attributes["service.namespace"], "yggdrasil-examples") where resource.attributes["service.namespace"] == nil
+          - set(body, attributes["msg"]) where attributes["msg"] != nil
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  prometheus:
+    endpoint: 0.0.0.0:9464
+    namespace: yggdrasil_otlp
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
+service:
+  pipelines:
+    traces:
+      receivers:
+        - otlp
+      processors:
+        - batch
+      exporters:
+        - otlp/tempo
+
+    metrics:
+      receivers:
+        - otlp
+      processors:
+        - batch
+      exporters:
+        - prometheus
+
+    logs:
+      receivers:
+        - filelog
+      processors:
+        - transform/logs
+        - batch
+      exporters:
+        - otlphttp/loki

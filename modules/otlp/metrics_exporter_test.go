@@ -60,50 +60,6 @@ func TestMetricExportIntervalDefaults(t *testing.T) {
 	}
 }
 
-func TestTemporalitySelectors(t *testing.T) {
-	tests := []struct {
-		name           string
-		temporality    string
-		wantCumulative bool
-	}{
-		{
-			name:           "cumulative temporality",
-			temporality:    "cumulative",
-			wantCumulative: true,
-		},
-		{
-			name:           "delta temporality",
-			temporality:    "delta",
-			wantCumulative: false,
-		},
-		{
-			name:           "empty defaults to cumulative",
-			temporality:    "",
-			wantCumulative: true,
-		},
-		{
-			name:           "unknown defaults to cumulative",
-			temporality:    "unknown",
-			wantCumulative: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := getMetricTemporality(tt.temporality)
-			isCumulative := (got == "cumulative")
-			if isCumulative != tt.wantCumulative {
-				t.Errorf(
-					"getMetricTemporality(%q) = %q, want cumulative=%v",
-					tt.temporality,
-					got,
-					tt.wantCumulative,
-				)
-			}
-		})
-	}
-}
-
 func TestMetricConfigDefaults(t *testing.T) {
 	// Test that empty config gets proper defaults
 	cfg := MetricExporterConfig{}
