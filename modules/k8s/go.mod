@@ -2,8 +2,6 @@ module github.com/codesjoy/yggdrasil-ecosystem/modules/k8s/v3
 
 go 1.25.7
 
-replace github.com/codesjoy/yggdrasil/v3 => ../../../yggdrasil
-
 require (
 	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2
 	github.com/mitchellh/mapstructure v1.5.0
