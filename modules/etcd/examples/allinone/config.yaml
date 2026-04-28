@@ -1,0 +1,41 @@
+yggdrasil:
+  etcd:
+    clients:
+      default:
+        endpoints:
+          - "127.0.0.1:2379"
+        dial_timeout: 5s
+
+  config:
+    sources:
+      - kind: etcd
+        name: etcd:allinone
+        priority: remote
+        config:
+          client: default
+          key: /examples/etcd/allinone/config.yaml
+          watch: true
+          format: yaml
+
+  discovery:
+    registry:
+      type: etcd
+      config:
+        client: default
+        prefix: /yggdrasil/registry
+        ttl: 5s
+        keep_alive: true
+        retry_interval: 1s
+    resolvers:
+      default:
+        type: etcd
+        config:
+          client: default
+          prefix: /yggdrasil/registry
+          namespace: default
+          protocols: [grpc, http]
+          debounce: 200ms
+
+app:
+  allinone:
+    message: "hello from local allinone fallback"

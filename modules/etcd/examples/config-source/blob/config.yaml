@@ -1,0 +1,23 @@
+yggdrasil:
+  etcd:
+    clients:
+      default:
+        endpoints:
+          - "127.0.0.1:2379"
+        dial_timeout: 5s
+
+  config:
+    sources:
+      - kind: etcd
+        name: etcd:blob
+        priority: remote
+        config:
+          client: default
+          key: /examples/etcd/blob/config.yaml
+          watch: true
+          format: yaml
+
+app:
+  config_source:
+    greeting: "hello from local blob fallback"
+    name: local

@@ -1,0 +1,17 @@
+yggdrasil:
+  etcd:
+    clients:
+      default:
+        endpoints:
+          - "127.0.0.1:2379"
+        dial_timeout: 5s
+
+  discovery:
+    registry:
+      type: etcd
+      config:
+        client: default
+        prefix: /yggdrasil/registry
+        ttl: 5s
+        keep_alive: true
+        retry_interval: 1s
