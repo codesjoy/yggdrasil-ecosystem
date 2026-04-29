@@ -16,8 +16,10 @@ package polaris
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/codesjoy/yggdrasil-ecosystem/modules/polaris/v3/internal/sdk"
 	"github.com/codesjoy/yggdrasil/v3/capabilities"
 	"github.com/codesjoy/yggdrasil/v3/config"
 	configchain "github.com/codesjoy/yggdrasil/v3/config/chain"
@@ -135,5 +137,145 @@ func TestModuleConfigSourceBuilderUsesBaseSDKConfig(t *testing.T) {
 	}
 	if sdkCfg.Token != "token" || sdkCfg.ConfigFile != "/tmp/polaris.yaml" {
 		t.Fatalf("sdk config = %#v", sdkCfg)
+	}
+}
+
+func TestModuleIdentityInvalidSourceAndGovernanceMerge(t *testing.T) {
+	mod := &polarisModule{
+		settings: settings{
+			Polaris: struct {
+				SDKs       map[string]sdk.Config `mapstructure:"sdks"`
+				Governance struct {
+					Defaults map[string]any            `mapstructure:"defaults"`
+					Services map[string]map[string]any `mapstructure:"services"`
+				} `mapstructure:"governance"`
+			}{
+				Governance: struct {
+					Defaults map[string]any            `mapstructure:"defaults"`
+					Services map[string]map[string]any `mapstructure:"services"`
+				}{
+					Defaults: map[string]any{"namespace": "default", "rate_limit": map[string]any{"enable": true}},
+					Services: map[string]map[string]any{"svc": {"caller_service": "caller"}},
+				},
+			},
+			Balancers: struct {
+				Defaults map[string]struct {
+					Type   string         `mapstructure:"type"`
+					Config map[string]any `mapstructure:"config"`
+				} `mapstructure:"defaults"`
+				Services map[string]map[string]struct {
+					Type   string         `mapstructure:"type"`
+					Config map[string]any `mapstructure:"config"`
+				} `mapstructure:"services"`
+			}{
+				Defaults: map[string]struct {
+					Type   string         `mapstructure:"type"`
+					Config map[string]any `mapstructure:"config"`
+				}{
+					"polaris": {Config: map[string]any{"routing": map[string]any{"enable": true}}},
+				},
+				Services: map[string]map[string]struct {
+					Type   string         `mapstructure:"type"`
+					Config map[string]any `mapstructure:"config"`
+				}{
+					"svc": {
+						"polaris": {Config: map[string]any{"addresses": []string{"127.0.0.1:8091"}}},
+					},
+				},
+			},
+		},
+	}
+
+	if mod.Name() != "polaris" {
+		t.Fatalf("Name() = %q", mod.Name())
+	}
+	if mod.ConfigPath() != "yggdrasil" {
+		t.Fatalf("ConfigPath() = %q", mod.ConfigPath())
+	}
+
+	wantErr := errors.New("invalid source")
+	src := invalidSource{name: "remote", err: wantErr}
+	if src.Kind() != "polaris" || src.Name() != "remote" {
+		t.Fatalf("invalidSource identity = (%s, %s)", src.Kind(), src.Name())
+	}
+	if data, err := src.Read(); data != nil || !errors.Is(err, wantErr) {
+		t.Fatalf("invalidSource.Read() = (%#v, %v)", data, err)
+	}
+	if err := src.Close(); err != nil {
+		t.Fatalf("invalidSource.Close() error = %v", err)
+	}
+
+	cfg := mod.governanceConfig("svc")
+	if cfg["namespace"] != "default" || cfg["caller_service"] != "caller" {
+		t.Fatalf("governanceConfig() basics = %#v", cfg)
+	}
+	routing, ok := cfg["routing"].(map[string]any)
+	if !ok || routing["enable"] != true {
+		t.Fatalf("governanceConfig() routing = %#v", cfg["routing"])
+	}
+	addresses, ok := cfg["addresses"].([]string)
+	if !ok || len(addresses) != 1 || addresses[0] != "127.0.0.1:8091" {
+		t.Fatalf("governanceConfig() addresses = %#v", cfg["addresses"])
+	}
+}
+
+func TestModuleInitAndConfigSourceBuilderErrors(t *testing.T) {
+	mod := &polarisModule{}
+
+	view := config.NewView("yggdrasil", config.NewSnapshot("bad"))
+	if err := mod.Init(context.Background(), view); err == nil {
+		t.Fatal("Init() should fail for invalid duration")
+	}
+
+	builder := mod.ConfigSourceBuilders()["polaris"]
+	if builder == nil {
+		t.Fatal("polaris config source builder missing")
+	}
+
+	_, _, err := builder(
+		configchain.BuildContext{
+			Snapshot: config.NewSnapshot(map[string]any{"yggdrasil": "bad"}),
+		},
+		configchain.SourceSpec{
+			Kind:   "polaris",
+			Config: map[string]any{"file_name": "application.yaml"},
+		},
+	)
+	if err == nil {
+		t.Fatal("builder() should fail when snapshot cannot decode")
+	}
+
+	_, _, err = builder(
+		configchain.BuildContext{},
+		configchain.SourceSpec{
+			Kind:   "polaris",
+			Config: map[string]any{"file_name": "application.yaml", "fetch_timeout": "bad-duration"},
+		},
+	)
+	if err == nil {
+		t.Fatal("builder() should fail when spec config cannot decode")
+	}
+
+	_, _, err = builder(
+		configchain.BuildContext{},
+		configchain.SourceSpec{
+			Kind:     "polaris",
+			Priority: "invalid",
+			Config:   map[string]any{"file_name": "application.yaml"},
+		},
+	)
+	if err == nil {
+		t.Fatal("builder() should fail for invalid priority")
+	}
+
+	_, _, err = builder(
+		configchain.BuildContext{},
+		configchain.SourceSpec{
+			Kind:   "polaris",
+			Config: map[string]any{},
+		},
+	)
+	if err == nil {
+		t.Fatal("builder() should fail when config source cannot be constructed")
 	}
 }

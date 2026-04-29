@@ -27,6 +27,12 @@ import (
 	yresolver "github.com/codesjoy/yggdrasil/v3/discovery/resolver"
 )
 
+var newResolverConsumerAPI = func(name string, cfg ResolverConfig) (sdk.ConsumerAPI, error) {
+	sdkName := sdk.ResolveSDKName(name, cfg.SDK)
+	cfg.Addresses = sdk.ResolveSDKAddresses(name, cfg.SDK, cfg.Addresses)
+	return sdk.GetHolder(sdkName, cfg.Addresses, nil).Consumer()
+}
+
 // ResolverConfig is the config for the Polaris resolver.
 type ResolverConfig struct {
 	Addresses       []string          `mapstructure:"addresses"`
@@ -57,9 +63,8 @@ type Resolver struct {
 
 // NewResolver creates a new Polaris resolver.
 func NewResolver(name string, cfg ResolverConfig) (*Resolver, error) {
-	sdkName := sdk.ResolveSDKName(name, cfg.SDK)
 	cfg.Addresses = sdk.ResolveSDKAddresses(name, cfg.SDK, cfg.Addresses)
-	api, err := sdk.GetHolder(sdkName, cfg.Addresses, nil).Consumer()
+	api, err := newResolverConsumerAPI(name, cfg)
 	if err != nil {
 		return nil, err
 	}

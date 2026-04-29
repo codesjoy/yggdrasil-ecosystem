@@ -29,6 +29,19 @@ import (
 	"github.com/codesjoy/yggdrasil/v3/rpc/status"
 )
 
+var (
+	getRateLimitAPI = func(serviceName string, cfg governanceConfig) (sdk.LimitAPI, error) {
+		sdkName := sdk.ResolveSDKName(serviceName, cfg.SDK)
+		addresses := sdk.ResolveSDKAddresses(serviceName, cfg.SDK, cfg.Addresses)
+		return sdk.GetHolder(sdkName, addresses, nil).Limit()
+	}
+	getCircuitBreakerAPI = func(serviceName string, cfg governanceConfig) (sdk.CircuitBreakerAPI, error) {
+		addresses := sdk.ResolveSDKAddresses(serviceName, cfg.SDK, cfg.Addresses)
+		sdkName := sdk.ResolveSDKName(serviceName, cfg.SDK)
+		return sdk.GetHolder(sdkName, addresses, nil).CircuitBreaker()
+	}
+)
+
 // ConfigLoader loads merged Polaris traffic governance config for a service.
 type ConfigLoader func(serviceName string) map[string]any
 
@@ -126,9 +139,7 @@ func buildPolarisRateLimitUnary(
 	if namespace == "" {
 		namespace = "default"
 	}
-	sdkName := sdk.ResolveSDKName(serviceName, cfg.SDK)
-	addresses := sdk.ResolveSDKAddresses(serviceName, cfg.SDK, cfg.Addresses)
-	api, initErr := sdk.GetHolder(sdkName, addresses, nil).Limit()
+	api, initErr := getRateLimitAPI(serviceName, cfg)
 
 	return func(ctx context.Context, method string, req, reply any, invoker interceptor.UnaryInvoker) error {
 		if initErr != nil {
@@ -214,9 +225,7 @@ func buildPolarisCircuitBreakerUnary(
 		callerService = "unknown"
 	}
 
-	addresses := sdk.ResolveSDKAddresses(serviceName, cfg.SDK, cfg.Addresses)
-	sdkName := sdk.ResolveSDKName(serviceName, cfg.SDK)
-	api, initErr := sdk.GetHolder(sdkName, addresses, nil).CircuitBreaker()
+	api, initErr := getCircuitBreakerAPI(serviceName, cfg)
 	dst := &model.ServiceKey{Namespace: namespace, Service: serviceName}
 	src := &model.ServiceKey{Namespace: callerNamespace, Service: callerService}
 

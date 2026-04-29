@@ -16,9 +16,11 @@ package discovery
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/codesjoy/yggdrasil-ecosystem/modules/polaris/v3/internal/sdk"
 	yregistry "github.com/codesjoy/yggdrasil/v3/discovery/registry"
 	polarisgo "github.com/polarismesh/polaris-go"
 	"github.com/polarismesh/polaris-go/pkg/model"
@@ -71,6 +73,19 @@ func (i testInstance) Name() string                    { return i.name }
 func (i testInstance) Version() string                 { return i.version }
 func (i testInstance) Metadata() map[string]string     { return i.metadata }
 func (i testInstance) Endpoints() []yregistry.Endpoint { return i.endpoints }
+
+func restoreDiscoveryGlobals(t *testing.T) {
+	t.Helper()
+
+	origRegistry := newRegistryProviderAPI
+	origResolver := newResolverConsumerAPI
+
+	t.Cleanup(func() {
+		newRegistryProviderAPI = origRegistry
+		newResolverConsumerAPI = origResolver
+		sdk.ConfigureConfigLoader(nil)
+	})
+}
 
 func TestRegistryRegisterAndDeregister(t *testing.T) {
 	fp := &fakeProvider{nextID: "instance-1"}
@@ -153,5 +168,66 @@ func TestRegistryRegisterAndDeregister(t *testing.T) {
 	}
 	if dreq.RetryCount == nil || *dreq.RetryCount != 2 {
 		t.Fatalf("deregister RetryCount = %v, want 2", dreq.RetryCount)
+	}
+}
+
+func TestRegistryConstructorsAndDecodeMap(t *testing.T) {
+	restoreDiscoveryGlobals(t)
+
+	fp := &fakeProvider{nextID: "instance-1"}
+	newRegistryProviderAPI = func(name string, cfg RegistryConfig) (sdk.ProviderAPI, error) {
+		if name != "svc" && name != "default" {
+			t.Fatalf("registry name = %q", name)
+		}
+		return fp, nil
+	}
+
+	reg, err := NewRegistry("svc", RegistryConfig{Namespace: "ns"})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	if reg.Type() != "polaris" {
+		t.Fatalf("Type() = %q", reg.Type())
+	}
+
+	fromMap, err := NewRegistryFromMap(map[string]any{
+		"namespace":      "ns",
+		"service_token":  "token",
+		"ttl":            "5s",
+		"auto_heartbeat": true,
+		"retry_count":    2,
+	})
+	if err != nil {
+		t.Fatalf("NewRegistryFromMap() error = %v", err)
+	}
+	got := fromMap.(*Registry)
+	if got.cfg.Namespace != "ns" || got.cfg.ServiceToken != "token" || got.cfg.TTL != 5*time.Second ||
+		!got.cfg.AutoHeartbeat || got.cfg.RetryCount != 2 {
+		t.Fatalf("decoded registry config = %#v", got.cfg)
+	}
+
+	provider := RegistryProvider()
+	if provider.Type() != "polaris" {
+		t.Fatalf("RegistryProvider().Type() = %q", provider.Type())
+	}
+	viaProvider, err := provider.New(map[string]any{"namespace": "ns"})
+	if err != nil {
+		t.Fatalf("provider.New() error = %v", err)
+	}
+	if viaProvider.(*Registry).cfg.Namespace != "ns" {
+		t.Fatalf("provider.New() cfg = %#v", viaProvider.(*Registry).cfg)
+	}
+
+	withErr := NewRegistryWithError(RegistryConfig{}, errors.New("boom"))
+	if err := withErr.Register(context.Background(), testInstance{}); err == nil || err.Error() != "boom" {
+		t.Fatalf("Register() error = %v", err)
+	}
+	if err := withErr.Deregister(context.Background(), testInstance{}); err == nil || err.Error() != "boom" {
+		t.Fatalf("Deregister() error = %v", err)
+	}
+
+	var cfg RegistryConfig
+	if err := decodeMap(map[string]any{"ttl": "bad"}, &cfg); err == nil {
+		t.Fatal("decodeMap() should fail for invalid duration")
 	}
 }

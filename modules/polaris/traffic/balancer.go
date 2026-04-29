@@ -36,6 +36,19 @@ import (
 
 const polarisBalancerName = "polaris"
 
+var getBalancerAPIs = func(
+	serviceName string,
+	cfg governanceConfig,
+) (sdk.RouterAPI, error, sdk.LimitAPI, error, sdk.CircuitBreakerAPI, error) {
+	addresses := sdk.ResolveSDKAddresses(serviceName, cfg.SDK, cfg.Addresses)
+	sdkName := sdk.ResolveSDKName(serviceName, cfg.SDK)
+	holder := sdk.GetHolder(sdkName, addresses, nil)
+	r, rErr := holder.Router()
+	l, lErr := holder.Limit()
+	cb, cbErr := holder.CircuitBreaker()
+	return r, rErr, l, lErr, cb, cbErr
+}
+
 type polarisBalancer struct {
 	serviceName string
 	cli         balancer.Client
@@ -74,12 +87,7 @@ func newPolarisBalancer(
 	cli balancer.Client,
 ) (balancer.Balancer, error) {
 	cfg := loadGovernanceConfig(load, serviceName)
-	addresses := sdk.ResolveSDKAddresses(serviceName, cfg.SDK, cfg.Addresses)
-	sdkName := sdk.ResolveSDKName(serviceName, cfg.SDK)
-	holder := sdk.GetHolder(sdkName, addresses, nil)
-	r, rErr := holder.Router()
-	l, lErr := holder.Limit()
-	cb, cbErr := holder.CircuitBreaker()
+	r, rErr, l, lErr, cb, cbErr := getBalancerAPIs(serviceName, cfg)
 	return &polarisBalancer{
 		serviceName:      serviceName,
 		cli:              cli,

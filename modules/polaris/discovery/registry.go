@@ -29,6 +29,12 @@ import (
 	yregistry "github.com/codesjoy/yggdrasil/v3/discovery/registry"
 )
 
+var newRegistryProviderAPI = func(name string, cfg RegistryConfig) (sdk.ProviderAPI, error) {
+	sdkName := sdk.ResolveSDKName(name, cfg.SDK)
+	addresses := sdk.ResolveSDKAddresses(name, cfg.SDK, cfg.Addresses)
+	return sdk.GetHolder(sdkName, addresses, nil).Provider()
+}
+
 // RegistryConfig is the config for the Polaris registry.
 type RegistryConfig struct {
 	Addresses     []string      `mapstructure:"addresses"`
@@ -63,8 +69,7 @@ type registeredInstance struct {
 // NewRegistry creates a new Polaris registry.
 func NewRegistry(name string, cfg RegistryConfig) (*Registry, error) {
 	sdkName := sdk.ResolveSDKName(name, cfg.SDK)
-	addresses := sdk.ResolveSDKAddresses(name, cfg.SDK, cfg.Addresses)
-	api, err := sdk.GetHolder(sdkName, addresses, nil).Provider()
+	api, err := newRegistryProviderAPI(name, cfg)
 	if err != nil {
 		return nil, err
 	}

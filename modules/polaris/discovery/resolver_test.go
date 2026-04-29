@@ -16,9 +16,12 @@ package discovery
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/codesjoy/yggdrasil-ecosystem/modules/polaris/v3/internal/sdk"
+	yresolver "github.com/codesjoy/yggdrasil/v3/discovery/resolver"
 	polarisgo "github.com/polarismesh/polaris-go"
 	"github.com/polarismesh/polaris-go/pkg/model"
 )
@@ -217,5 +220,122 @@ func TestResolverFetchStateFiltersMetadata(t *testing.T) {
 	}
 	if got := endpoints[0].GetAttributes()["instance_id"]; got != "canary" {
 		t.Fatalf("instance_id = %v, want canary", got)
+	}
+}
+
+type testResolverWatcher struct {
+	updates chan yresolver.State
+}
+
+func (w *testResolverWatcher) UpdateState(state yresolver.State) {
+	w.updates <- state
+}
+
+func TestResolverConstructorsAndWatchLifecycle(t *testing.T) {
+	restoreDiscoveryGlobals(t)
+
+	fc := &fakeConsumer{
+		resp: &model.InstancesResponse{
+			Instances: []model.Instance{
+				&fakeInstance{
+					id:       "ins-1",
+					host:     "127.0.0.1",
+					port:     8080,
+					protocol: "grpc",
+				},
+			},
+		},
+	}
+	newResolverConsumerAPI = func(name string, cfg ResolverConfig) (sdk.ConsumerAPI, error) {
+		if name != "svc" {
+			t.Fatalf("resolver name = %q", name)
+		}
+		if len(cfg.Addresses) != 1 || cfg.Addresses[0] != "127.0.0.1:8091" {
+			t.Fatalf("resolver cfg addresses = %#v", cfg.Addresses)
+		}
+		return fc, nil
+	}
+
+	resolver, err := NewResolver("svc", ResolverConfig{Addresses: []string{"127.0.0.1:8091"}})
+	if err != nil {
+		t.Fatalf("NewResolver() error = %v", err)
+	}
+	if resolver.Type() != "polaris" {
+		t.Fatalf("Type() = %q", resolver.Type())
+	}
+
+	provider := ResolverProvider(func(string) ResolverConfig {
+		return ResolverConfig{Addresses: []string{"127.0.0.1:8091"}}
+	})
+	if provider.Type() != "polaris" {
+		t.Fatalf("ResolverProvider().Type() = %q", provider.Type())
+	}
+	viaProvider, err := provider.New("svc")
+	if err != nil {
+		t.Fatalf("provider.New() error = %v", err)
+	}
+	if viaProvider.(*Resolver).Type() != "polaris" {
+		t.Fatalf("provider.New() Type() = %q", viaProvider.(*Resolver).Type())
+	}
+
+	watcher := &testResolverWatcher{updates: make(chan yresolver.State, 2)}
+	lifecycle := &Resolver{
+		cfg:      ResolverConfig{RefreshInterval: time.Hour},
+		api:      fc,
+		watchers: map[string]map[yresolver.Client]struct{}{},
+		cancels:  map[string]context.CancelFunc{},
+	}
+	if err := lifecycle.AddWatch("svc", watcher); err != nil {
+		t.Fatalf("AddWatch() error = %v", err)
+	}
+	select {
+	case state := <-watcher.updates:
+		if len(state.GetEndpoints()) != 1 {
+			t.Fatalf("state endpoints = %#v", state.GetEndpoints())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for resolver update")
+	}
+	if got := len(lifecycle.snapshotWatchers("svc")); got != 1 {
+		t.Fatalf("snapshotWatchers() len = %d, want 1", got)
+	}
+	if err := lifecycle.DelWatch("svc", watcher); err != nil {
+		t.Fatalf("DelWatch() error = %v", err)
+	}
+	if got := len(lifecycle.snapshotWatchers("svc")); got != 0 {
+		t.Fatalf("snapshotWatchers() len = %d, want 0", got)
+	}
+	if _, ok := lifecycle.cancels["svc"]; ok {
+		t.Fatal("watch cancel should be removed after last watcher deletion")
+	}
+
+	withErr := NewResolverWithError("svc", ResolverConfig{}, errors.New("boom"))
+	if err := withErr.AddWatch("svc", watcher); err == nil || err.Error() != "boom" {
+		t.Fatalf("AddWatch() error = %v", err)
+	}
+	if err := withErr.DelWatch("svc", watcher); err == nil || err.Error() != "boom" {
+		t.Fatalf("DelWatch() error = %v", err)
+	}
+	if err := resolver.AddWatch("", watcher); err == nil {
+		t.Fatal("AddWatch() should fail for empty app name")
+	}
+}
+
+func TestResolverFetchAndNotifySkipsErrors(t *testing.T) {
+	fc := &fakeConsumer{err: errors.New("fetch failed")}
+	watcher := &testResolverWatcher{updates: make(chan yresolver.State, 1)}
+	r := &Resolver{
+		cfg:      ResolverConfig{},
+		api:      fc,
+		watchers: map[string]map[yresolver.Client]struct{}{"svc": {watcher: {}}},
+		cancels:  map[string]context.CancelFunc{},
+	}
+
+	r.fetchAndNotify(context.Background(), "svc")
+
+	select {
+	case <-watcher.updates:
+		t.Fatal("watcher should not be notified when fetchState fails")
+	case <-time.After(100 * time.Millisecond):
 	}
 }

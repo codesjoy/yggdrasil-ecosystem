@@ -24,6 +24,35 @@ import (
 	polariscfg "github.com/polarismesh/polaris-go/pkg/config"
 )
 
+var (
+	loadConfigurationByFile = func(path string) (polariscfg.Configuration, error) {
+		return polariscfg.LoadConfigurationByFile(path)
+	}
+	newDefaultConfiguration           = polariscfg.NewDefaultConfiguration
+	newDefaultConfigurationWithDomain = polariscfg.NewDefaultConfigurationWithDomain
+	newSDKContextByConfig             = polaris.NewSDKContextByConfig
+	newSDKContextByAddress            = polaris.NewSDKContextByAddress
+	newSDKContext                     = polaris.NewSDKContext
+	newProviderAPIByContext           = func(ctx api.SDKContext) ProviderAPI {
+		return polaris.NewProviderAPIByContext(ctx)
+	}
+	newConsumerAPIByContext = func(ctx api.SDKContext) ConsumerAPI {
+		return polaris.NewConsumerAPIByContext(ctx)
+	}
+	newConfigAPIByContext = func(ctx api.SDKContext) ConfigAPI {
+		return polaris.NewConfigAPIByContext(ctx)
+	}
+	newLimitAPIByContext = func(ctx api.SDKContext) LimitAPI {
+		return polaris.NewLimitAPIByContext(ctx)
+	}
+	newCircuitBreakerAPIByContext = func(ctx api.SDKContext) CircuitBreakerAPI {
+		return polaris.NewCircuitBreakerAPIByContext(ctx)
+	}
+	newRouterAPIByContext = func(ctx api.SDKContext) RouterAPI {
+		return polaris.NewRouterAPIByContext(ctx)
+	}
+)
+
 func applyTokenToConfig(cfg polariscfg.Configuration, token string) {
 	if cfg == nil || token == "" {
 		return
@@ -91,14 +120,14 @@ type ClientHolder struct {
 func (h *ClientHolder) initContext() {
 	cfg := LoadSDKConfig(h.sdkName)
 	if cfg.ConfigFile != "" {
-		c, err := polariscfg.LoadConfigurationByFile(cfg.ConfigFile)
+		c, err := loadConfigurationByFile(cfg.ConfigFile)
 		if err != nil {
 			h.ctxErr = err
 			return
 		}
 		applyTokenToConfig(c, cfg.Token)
 		applyConfigAddressesToConfig(c, cfg.ConfigAddress)
-		h.ctx, h.ctxErr = polaris.NewSDKContextByConfig(c)
+		h.ctx, h.ctxErr = newSDKContextByConfig(c)
 		return
 	}
 
@@ -113,21 +142,21 @@ func (h *ClientHolder) initContext() {
 	if cfg.Token != "" || len(configAddresses) > 0 {
 		var c *polariscfg.ConfigurationImpl
 		if len(addresses) > 0 {
-			c = polariscfg.NewDefaultConfiguration(addresses)
+			c = newDefaultConfiguration(addresses)
 		} else {
-			c = polariscfg.NewDefaultConfigurationWithDomain()
+			c = newDefaultConfigurationWithDomain()
 		}
 		applyTokenToConfig(c, cfg.Token)
 		applyConfigAddressesToConfig(c, configAddresses)
-		h.ctx, h.ctxErr = polaris.NewSDKContextByConfig(c)
+		h.ctx, h.ctxErr = newSDKContextByConfig(c)
 		return
 	}
 	if len(addresses) > 0 {
-		h.ctx, h.ctxErr = polaris.NewSDKContextByAddress(addresses...)
+		h.ctx, h.ctxErr = newSDKContextByAddress(addresses...)
 		return
 	}
 
-	h.ctx, h.ctxErr = polaris.NewSDKContext()
+	h.ctx, h.ctxErr = newSDKContext()
 }
 
 func (h *ClientHolder) getContext() (api.SDKContext, error) {
@@ -143,7 +172,7 @@ func (h *ClientHolder) Provider() (ProviderAPI, error) {
 			h.providerErr = err
 			return
 		}
-		h.provider = polaris.NewProviderAPIByContext(ctx)
+		h.provider = newProviderAPIByContext(ctx)
 	})
 	return h.provider, h.providerErr
 }
@@ -156,7 +185,7 @@ func (h *ClientHolder) Consumer() (ConsumerAPI, error) {
 			h.consumerErr = err
 			return
 		}
-		h.consumer = polaris.NewConsumerAPIByContext(ctx)
+		h.consumer = newConsumerAPIByContext(ctx)
 	})
 	return h.consumer, h.consumerErr
 }
@@ -169,7 +198,7 @@ func (h *ClientHolder) Config() (ConfigAPI, error) {
 			h.configErr = err
 			return
 		}
-		h.config = polaris.NewConfigAPIByContext(ctx)
+		h.config = newConfigAPIByContext(ctx)
 	})
 	return h.config, h.configErr
 }
@@ -182,7 +211,7 @@ func (h *ClientHolder) Limit() (LimitAPI, error) {
 			h.limitErr = err
 			return
 		}
-		h.limit = polaris.NewLimitAPIByContext(ctx)
+		h.limit = newLimitAPIByContext(ctx)
 	})
 	return h.limit, h.limitErr
 }
@@ -195,7 +224,7 @@ func (h *ClientHolder) CircuitBreaker() (CircuitBreakerAPI, error) {
 			h.cbErr = err
 			return
 		}
-		h.cb = polaris.NewCircuitBreakerAPIByContext(ctx)
+		h.cb = newCircuitBreakerAPIByContext(ctx)
 	})
 	return h.cb, h.cbErr
 }
@@ -208,7 +237,7 @@ func (h *ClientHolder) Router() (RouterAPI, error) {
 			h.routerErr = err
 			return
 		}
-		h.router = polaris.NewRouterAPIByContext(ctx)
+		h.router = newRouterAPIByContext(ctx)
 	})
 	return h.router, h.routerErr
 }
