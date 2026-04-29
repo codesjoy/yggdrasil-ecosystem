@@ -26,5 +26,5 @@ func NewResolver(name string, cfg ResolverConfig) (yresolver.Resolver, error) {
 
 // ResolverProvider returns the xDS v3 resolver provider.
 func ResolverProvider(load ResolverConfigLoader) yresolver.Provider {
-	return internalresolver.ResolverProvider(load)
+	return internalresolver.Provider(load)
 }

@@ -54,7 +54,7 @@ type typeWatchState struct {
 }
 
 type adsClient struct {
-	cfg        ResolverConfig
+	cfg        Config
 	mu         sync.Mutex
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -70,7 +70,7 @@ type adsClient struct {
 	closeOnce  sync.Once
 }
 
-func newADSClient(cfg ResolverConfig, handle func(xdsresource.DiscoveryEvent)) (*adsClient, error) {
+func newADSClient(cfg Config, handle func(xdsresource.DiscoveryEvent)) (*adsClient, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	node, err := newADSNode(cfg)
@@ -92,7 +92,7 @@ func newADSClient(cfg ResolverConfig, handle func(xdsresource.DiscoveryEvent)) (
 	}, nil
 }
 
-func newADSNode(cfg ResolverConfig) (*corev3.Node, error) {
+func newADSNode(cfg Config) (*corev3.Node, error) {
 	metadataMap := make(map[string]any, len(cfg.Node.Metadata))
 	for key, value := range cfg.Node.Metadata {
 		metadataMap[key] = value
@@ -119,7 +119,7 @@ func newADSNode(cfg ResolverConfig) (*corev3.Node, error) {
 	return node, nil
 }
 
-func maxADSRetries(cfg ResolverConfig) int {
+func maxADSRetries(cfg Config) int {
 	if cfg.MaxRetries > 0 {
 		return cfg.MaxRetries
 	}

@@ -20,8 +20,8 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-// ResolverConfig holds the configuration for xDS resolver.
-type ResolverConfig struct {
+// Config holds the configuration for xDS resolver.
+type Config struct {
 	Server     ServerConfig      `mapstructure:"server"`
 	Node       NodeConfig        `mapstructure:"node"`
 	ServiceMap map[string]string `mapstructure:"service_map"`
@@ -73,11 +73,11 @@ type RetryConfig struct {
 	Backoff    time.Duration `mapstructure:"backoff"`
 }
 
-// ResolverConfigLoader loads resolver config for a named resolver.
-type ResolverConfigLoader func(name string) ResolverConfig
+// ConfigLoader loads resolver config for a named resolver.
+type ConfigLoader func(name string) Config
 
-func defaultResolverConfig() ResolverConfig {
-	return ResolverConfig{
+func defaultResolverConfig() Config {
+	return Config{
 		Server: ServerConfig{
 			Address: "127.0.0.1:18000",
 			Timeout: 5 * time.Second,
@@ -104,12 +104,12 @@ func defaultResolverConfig() ResolverConfig {
 }
 
 // DefaultResolverConfig returns the default xDS resolver configuration.
-func DefaultResolverConfig() ResolverConfig {
+func DefaultResolverConfig() Config {
 	return defaultResolverConfig()
 }
 
 // DecodeConfig decodes an xDS resolver config map with defaults.
-func DecodeConfig(input map[string]any) ResolverConfig {
+func DecodeConfig(input map[string]any) Config {
 	cfg := defaultResolverConfig()
 	if len(input) == 0 {
 		return cfg

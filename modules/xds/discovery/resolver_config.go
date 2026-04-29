@@ -18,7 +18,7 @@ import internalresolver "github.com/codesjoy/yggdrasil-ecosystem/modules/xds/v3/
 
 type (
 	// ResolverConfig holds the configuration for xDS resolver.
-	ResolverConfig = internalresolver.ResolverConfig
+	ResolverConfig = internalresolver.Config
 	// ServerConfig holds the xDS server connection configuration.
 	ServerConfig = internalresolver.ServerConfig
 	// TLSConfig holds TLS configuration for xDS server connection.
@@ -32,7 +32,7 @@ type (
 	// RetryConfig holds retry configuration.
 	RetryConfig = internalresolver.RetryConfig
 	// ResolverConfigLoader loads resolver config for a named resolver.
-	ResolverConfigLoader = internalresolver.ResolverConfigLoader
+	ResolverConfigLoader = internalresolver.ConfigLoader
 )
 
 // DefaultResolverConfig returns the default xDS resolver configuration.

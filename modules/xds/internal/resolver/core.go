@@ -23,7 +23,7 @@ import (
 )
 
 type xdsResolver struct {
-	cfg      ResolverConfig
+	cfg      Config
 	core     *xdsCore
 	watchers map[string]map[yresolver.Client]struct{}
 }
@@ -35,7 +35,7 @@ type adsSubscriptionClient interface {
 }
 
 type xdsCore struct {
-	cfg       ResolverConfig
+	cfg       Config
 	ctx       context.Context
 	cancel    context.CancelFunc
 	mu        sync.RWMutex
@@ -53,14 +53,14 @@ type appInfo struct {
 }
 
 var adsClientFactory = func(
-	cfg ResolverConfig,
+	cfg Config,
 	handle func(xdsresource.DiscoveryEvent),
 ) (adsSubscriptionClient, error) {
 	return newADSClient(cfg, handle)
 }
 
 // NewResolver creates a new xDS resolver.
-func NewResolver(_ string, cfg ResolverConfig) (yresolver.Resolver, error) {
+func NewResolver(_ string, cfg Config) (yresolver.Resolver, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	core := &xdsCore{
@@ -83,10 +83,10 @@ func NewResolver(_ string, cfg ResolverConfig) (yresolver.Resolver, error) {
 	return instance, nil
 }
 
-// ResolverProvider returns the xDS v3 resolver provider.
-func ResolverProvider(load ResolverConfigLoader) yresolver.Provider {
+// Provider returns the xDS v3 resolver provider.
+func Provider(load ConfigLoader) yresolver.Provider {
 	if load == nil {
-		load = func(string) ResolverConfig { return defaultResolverConfig() }
+		load = func(string) Config { return defaultResolverConfig() }
 	}
 	return yresolver.NewProvider("xds", func(name string) (yresolver.Resolver, error) {
 		return NewResolver(name, load(name))
