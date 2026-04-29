@@ -67,3 +67,30 @@ func TestModuleCapabilitiesAndConfig(t *testing.T) {
 		t.Fatalf("unexpected service map: %#v", cfg.ServiceMap)
 	}
 }
+
+func TestModuleHelpersAndDefaults(t *testing.T) {
+	mod := Module().(*xdsModule)
+
+	if mod.ConfigPath() != "yggdrasil" {
+		t.Fatalf("ConfigPath() = %q, want yggdrasil", mod.ConfigPath())
+	}
+	if WithModule() == nil {
+		t.Fatal("WithModule() returned nil option")
+	}
+
+	emptyView := config.NewView("yggdrasil", config.NewSnapshot(map[string]any{}))
+	if err := mod.Init(context.Background(), emptyView); err != nil {
+		t.Fatalf("Init() with empty view error = %v", err)
+	}
+
+	cfg := mod.resolverConfig("missing")
+	if cfg.Server.Address != "127.0.0.1:18000" {
+		t.Fatalf("default resolver address = %q", cfg.Server.Address)
+	}
+	if cfg.Server.Timeout != 5*time.Second {
+		t.Fatalf("default resolver timeout = %v", cfg.Server.Timeout)
+	}
+	if cfg.Protocol != "grpc" {
+		t.Fatalf("default protocol = %q, want grpc", cfg.Protocol)
+	}
+}

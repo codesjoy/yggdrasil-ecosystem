@@ -15,6 +15,8 @@
 package resolver
 
 import (
+	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -63,14 +65,14 @@ func TestResolverCoreSubscriptionsAndNotifications(t *testing.T) {
 	oldFactory := adsClientFactory
 	fake := &fakeADS{}
 	adsClientFactory = func(
-		ResolverConfig,
+		Config,
 		func(xdsresource.DiscoveryEvent),
 	) (adsSubscriptionClient, error) {
 		return fake, nil
 	}
 	t.Cleanup(func() { adsClientFactory = oldFactory })
 
-	resolverAny, err := NewResolver("default", ResolverConfig{
+	resolverAny, err := NewResolver("default", Config{
 		Protocol:   "grpc",
 		ServiceMap: map[string]string{"svc": "listener-1"},
 	})
@@ -216,4 +218,141 @@ func TestDecodeConfig(t *testing.T) {
 	if cfg.Node.Locality == nil || cfg.Node.Locality.Region != "cn" {
 		t.Fatalf("locality not decoded: %#v", cfg.Node.Locality)
 	}
+}
+
+func TestDecodeConfigDefaultsAndFallbacks(t *testing.T) {
+	defaults := DefaultResolverConfig()
+
+	if got := DecodeConfig(nil); !reflect.DeepEqual(got, defaults) {
+		t.Fatalf("DecodeConfig(nil) = %#v, want %#v", got, defaults)
+	}
+
+	got := DecodeConfig(map[string]any{
+		"server": []string{"bad-shape"},
+	})
+	if !reflect.DeepEqual(got, defaults) {
+		t.Fatalf("DecodeConfig(invalid) = %#v, want defaults %#v", got, defaults)
+	}
+}
+
+func TestResolverProviderAndListenerName(t *testing.T) {
+	var loaded string
+	provider := Provider(func(name string) Config {
+		loaded = name
+		return Config{
+			ServiceMap: map[string]string{"svc": "listener-a"},
+		}
+	})
+
+	if provider.Type() != "xds" {
+		t.Fatalf("provider.Type() = %q, want xds", provider.Type())
+	}
+
+	resolverAny, err := provider.New("svc")
+	if err != nil {
+		t.Fatalf("provider.New() error = %v", err)
+	}
+	if loaded != "svc" {
+		t.Fatalf("loader called with %q, want svc", loaded)
+	}
+
+	instance := resolverAny.(*xdsResolver)
+	if instance.Type() != "xds" {
+		t.Fatalf("instance.Type() = %q, want xds", instance.Type())
+	}
+	if got := instance.listenerName("svc"); got != "listener-a" {
+		t.Fatalf("listenerName(mapped) = %q, want listener-a", got)
+	}
+	if got := instance.listenerName("other"); got != "other" {
+		t.Fatalf("listenerName(fallback) = %q, want other", got)
+	}
+}
+
+func TestAddWatchErrorsAndMultipleWatchers(t *testing.T) {
+	t.Run("factory error", func(t *testing.T) {
+		oldFactory := adsClientFactory
+		t.Cleanup(func() { adsClientFactory = oldFactory })
+
+		expectedErr := errors.New("factory error")
+		adsClientFactory = func(
+			Config,
+			func(xdsresource.DiscoveryEvent),
+		) (adsSubscriptionClient, error) {
+			return nil, expectedErr
+		}
+
+		resolverAny, err := NewResolver("default", Config{})
+		if err != nil {
+			t.Fatalf("NewResolver() error = %v", err)
+		}
+
+		recorder := &stateRecorder{ch: make(chan yresolver.State, 1)}
+		err = resolverAny.AddWatch("svc", recorder)
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("AddWatch() error = %v, want %v", err, expectedErr)
+		}
+	})
+
+	t.Run("start error", func(t *testing.T) {
+		oldFactory := adsClientFactory
+		t.Cleanup(func() { adsClientFactory = oldFactory })
+
+		expectedErr := errors.New("start error")
+		adsClientFactory = func(
+			Config,
+			func(xdsresource.DiscoveryEvent),
+		) (adsSubscriptionClient, error) {
+			return &fakeADS{err: expectedErr}, nil
+		}
+
+		resolverAny, err := NewResolver("default", Config{})
+		if err != nil {
+			t.Fatalf("NewResolver() error = %v", err)
+		}
+
+		recorder := &stateRecorder{ch: make(chan yresolver.State, 1)}
+		err = resolverAny.AddWatch("svc", recorder)
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("AddWatch() error = %v, want %v", err, expectedErr)
+		}
+	})
+
+	t.Run("keep ads while watcher remains", func(t *testing.T) {
+		oldFactory := adsClientFactory
+		t.Cleanup(func() { adsClientFactory = oldFactory })
+
+		fake := &fakeADS{}
+		adsClientFactory = func(
+			Config,
+			func(xdsresource.DiscoveryEvent),
+		) (adsSubscriptionClient, error) {
+			return fake, nil
+		}
+
+		resolverAny, err := NewResolver("default", Config{})
+		if err != nil {
+			t.Fatalf("NewResolver() error = %v", err)
+		}
+
+		instance := resolverAny.(*xdsResolver)
+		recorderA := &stateRecorder{ch: make(chan yresolver.State, 1)}
+		recorderB := &stateRecorder{ch: make(chan yresolver.State, 1)}
+
+		if err := instance.AddWatch("svc", recorderA); err != nil {
+			t.Fatalf("AddWatch(recorderA) error = %v", err)
+		}
+		if err := instance.AddWatch("svc", recorderB); err != nil {
+			t.Fatalf("AddWatch(recorderB) error = %v", err)
+		}
+		if err := instance.DelWatch("svc", recorderA); err != nil {
+			t.Fatalf("DelWatch(recorderA) error = %v", err)
+		}
+
+		if fake.closed {
+			t.Fatal("ADS client was closed while another watcher still existed")
+		}
+		if got := len(instance.watchers["svc"]); got != 1 {
+			t.Fatalf("watcher count = %d, want 1", got)
+		}
+	})
 }

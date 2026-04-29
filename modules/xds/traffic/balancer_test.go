@@ -16,11 +16,17 @@ package traffic
 
 import (
 	"context"
+	"errors"
+	"math/rand"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	xdsresource "github.com/codesjoy/yggdrasil-ecosystem/modules/xds/v3/internal/resource"
 	"github.com/codesjoy/yggdrasil/v3/discovery/resolver"
+	rpcmetadata "github.com/codesjoy/yggdrasil/v3/rpc/metadata"
 	"github.com/codesjoy/yggdrasil/v3/rpc/stream"
 	remote "github.com/codesjoy/yggdrasil/v3/transport"
 	"github.com/codesjoy/yggdrasil/v3/transport/runtime/client/balancer"
@@ -355,4 +361,535 @@ func TestLeastRequest_Report_Bug(t *testing.T) {
 	if count2After != 1 {
 		t.Errorf("BUG DETECTED: expected count2 to remain 1, got %d", count2After)
 	}
+}
+
+type recordingRemoteClient struct {
+	address      string
+	port         int
+	protocol     string
+	state        remote.State
+	closeErr     error
+	connectCount int
+	closeCount   int
+}
+
+func (c *recordingRemoteClient) NewStream(
+	context.Context,
+	*stream.Desc,
+	string,
+) (stream.ClientStream, error) {
+	return nil, nil
+}
+
+func (c *recordingRemoteClient) Close() error {
+	c.closeCount++
+	return c.closeErr
+}
+
+func (c *recordingRemoteClient) Protocol() string {
+	if c.protocol == "" {
+		return "grpc"
+	}
+	return c.protocol
+}
+
+func (c *recordingRemoteClient) State() remote.State {
+	if c.state == 0 {
+		return remote.Ready
+	}
+	return c.state
+}
+
+func (c *recordingRemoteClient) Connect() {
+	c.connectCount++
+}
+
+func (c *recordingRemoteClient) Address() string {
+	return c.address
+}
+
+func (c *recordingRemoteClient) Port() int {
+	return c.port
+}
+
+type recordingBalancerClient struct {
+	state       balancer.State
+	updateCount int
+	newErr      map[string]error
+	clients     map[string]*recordingRemoteClient
+}
+
+func (c *recordingBalancerClient) UpdateState(state balancer.State) {
+	c.state = state
+	c.updateCount++
+}
+
+func (c *recordingBalancerClient) NewRemoteClient(
+	endpoint resolver.Endpoint,
+	_ balancer.NewRemoteClientOptions,
+) (remote.Client, error) {
+	key := endpoint.GetAddress()
+	if key == "" {
+		key = endpoint.Name()
+	}
+	if err := c.newErr[key]; err != nil {
+		return nil, err
+	}
+	if c.clients == nil {
+		c.clients = make(map[string]*recordingRemoteClient)
+	}
+	if client := c.clients[key]; client != nil {
+		return client, nil
+	}
+
+	host, port := splitEndpointAddress(endpoint.GetAddress())
+	client := &recordingRemoteClient{
+		address:  host,
+		port:     port,
+		protocol: endpoint.GetProtocol(),
+		state:    remote.Ready,
+	}
+	c.clients[key] = client
+	return client, nil
+}
+
+func newDeterministicBalancer(t *testing.T, cli *recordingBalancerClient) *xdsBalancer {
+	t.Helper()
+
+	balancerAny, err := newXdsBalancer("svc", "", cli)
+	if err != nil {
+		t.Fatalf("newXdsBalancer() error = %v", err)
+	}
+	instance := balancerAny.(*xdsBalancer)
+	//nolint:gosec // Deterministic pseudo-random source is required for test assertions.
+	instance.rng = rand.New(rand.NewSource(1))
+	return instance
+}
+
+func testRoute(cluster string, weighted *xdsresource.WeightedClusters) []*xdsresource.VirtualHost {
+	return []*xdsresource.VirtualHost{{
+		Name:    "default",
+		Domains: []string{"*"},
+		Routes: []*xdsresource.Route{{
+			Match:  &xdsresource.RouteMatch{Prefix: "/"},
+			Action: &xdsresource.RouteAction{Cluster: cluster, WeightedClusters: weighted},
+		}},
+	}}
+}
+
+func testState(
+	endpoints []resolver.Endpoint,
+	vhosts []*xdsresource.VirtualHost,
+	policies map[string]clusterPolicy,
+) resolver.State {
+	return resolver.BaseState{
+		Endpoints: endpoints,
+		Attributes: map[string]any{
+			xdsresource.AttributeRoutes:   vhosts,
+			xdsresource.AttributeClusters: policies,
+		},
+	}
+}
+
+func TestBalancerProviderAndConfig(t *testing.T) {
+	provider := BalancerProvider()
+	if provider.Type() != "xds" {
+		t.Fatalf("provider.Type() = %q, want xds", provider.Type())
+	}
+
+	cfg := LoadBalancerConfig("svc")
+	if got := (&cfg).String(); got != "{}" {
+		t.Fatalf("BalancerConfig.String() = %q, want {}", got)
+	}
+
+	instance, err := provider.New("svc", "xds", &recordingBalancerClient{})
+	if err != nil {
+		t.Fatalf("provider.New() error = %v", err)
+	}
+	if instance.Type() != "xds" {
+		t.Fatalf("instance.Type() = %q, want xds", instance.Type())
+	}
+}
+
+func TestBalancerLifecycleAndStats(t *testing.T) {
+	cli := &recordingBalancerClient{
+		newErr: map[string]error{"bad:80": errors.New("new remote client failed")},
+	}
+	instance := newDeterministicBalancer(t, cli)
+
+	first := resolver.BaseEndpoint{
+		Address:  "10.0.0.1:8080",
+		Protocol: "grpc",
+		Attributes: map[string]any{
+			xdsresource.AttributeEndpointCluster:  "cluster-a",
+			xdsresource.AttributeEndpointWeight:   uint32(3),
+			xdsresource.AttributeEndpointPriority: uint32(0),
+		},
+	}
+	second := resolver.BaseEndpoint{
+		Address:  "10.0.0.2:8080",
+		Protocol: "grpc",
+		Attributes: map[string]any{
+			xdsresource.AttributeEndpointCluster:  "cluster-a",
+			xdsresource.AttributeEndpointWeight:   uint32(1),
+			xdsresource.AttributeEndpointPriority: uint32(1),
+		},
+	}
+	bad := resolver.BaseEndpoint{
+		Address:  "bad:80",
+		Protocol: "grpc",
+		Attributes: map[string]any{
+			xdsresource.AttributeEndpointCluster: "cluster-a",
+		},
+	}
+
+	policies := map[string]clusterPolicy{
+		"cluster-a": {
+			LBPolicy: "random",
+			CircuitBreaker: &CircuitBreakerConfig{
+				MaxRequests: 1,
+			},
+			OutlierDetection: &OutlierDetectionConfig{
+				Consecutive5xx:          1,
+				Interval:                time.Millisecond,
+				BaseEjectionTime:        time.Millisecond,
+				MaxEjectionTime:         2 * time.Millisecond,
+				MaxEjectionPercent:      100,
+				EnforcingConsecutive5xx: 100,
+			},
+			RateLimiter: &RateLimiterConfig{
+				MaxTokens:     1,
+				TokensPerFill: 1,
+				FillInterval:  time.Millisecond,
+			},
+		},
+	}
+
+	instance.UpdateState(testState(
+		[]resolver.Endpoint{first, second, bad},
+		testRoute("cluster-a", nil),
+		policies,
+	))
+	defer instance.Close() //nolint:errcheck
+
+	if cli.updateCount != 1 || cli.state.Picker == nil {
+		t.Fatalf(
+			"unexpected balancer client state: updates=%d picker=%#v",
+			cli.updateCount,
+			cli.state.Picker,
+		)
+	}
+	if cli.clients["10.0.0.1:8080"].connectCount != 1 {
+		t.Fatalf(
+			"first client connectCount = %d, want 1",
+			cli.clients["10.0.0.1:8080"].connectCount,
+		)
+	}
+	if cli.clients["10.0.0.2:8080"].connectCount != 1 {
+		t.Fatalf(
+			"second client connectCount = %d, want 1",
+			cli.clients["10.0.0.2:8080"].connectCount,
+		)
+	}
+	if _, ok := cli.clients["bad:80"]; ok {
+		t.Fatal("unexpected remote client creation for failing endpoint")
+	}
+
+	stats := instance.GetStats()
+	if len(stats.CircuitBreakers) != 1 || len(stats.OutlierDetectors) != 1 ||
+		len(stats.RateLimiters) != 1 {
+		t.Fatalf("GetStats() = %#v", stats)
+	}
+
+	instance.UpdateRemoteClientState(remote.ClientState{})
+	if cli.updateCount != 2 {
+		t.Fatalf("UpdateRemoteClientState() updateCount = %d, want 2", cli.updateCount)
+	}
+
+	staleClient := cli.clients["10.0.0.1:8080"]
+	instance.UpdateState(testState(
+		[]resolver.Endpoint{second},
+		testRoute("cluster-a", nil),
+		policies,
+	))
+	if staleClient.closeCount != 1 {
+		t.Fatalf("stale client closeCount = %d, want 1", staleClient.closeCount)
+	}
+	if cli.clients["10.0.0.2:8080"].connectCount != 1 {
+		t.Fatalf(
+			"reused client connectCount = %d, want 1",
+			cli.clients["10.0.0.2:8080"].connectCount,
+		)
+	}
+
+	instance.UpdateState(resolver.BaseState{
+		Endpoints: []resolver.Endpoint{second},
+		Attributes: map[string]any{
+			xdsresource.AttributeRoutes: []*xdsresource.VirtualHost{},
+		},
+	})
+	if len(instance.vhosts) != 0 {
+		t.Fatalf("vhosts = %#v, want empty", instance.vhosts)
+	}
+	if len(instance.clusterPolicies) != 0 ||
+		len(instance.circuitBreakers) != 0 ||
+		len(instance.outlierDetectors) != 0 ||
+		len(instance.rateLimiters) != 0 {
+		t.Fatalf("expected policy state reset, got %#v", instance.GetStats())
+	}
+
+	cli.clients["10.0.0.2:8080"].closeErr = errors.New("close failed")
+	if err := instance.Close(); err == nil || !strings.Contains(err.Error(), "close failed") {
+		t.Fatalf("Close() error = %v, want joined close failure", err)
+	}
+	if instance.remotesClient != nil {
+		t.Fatalf("remotesClient = %#v, want nil after Close", instance.remotesClient)
+	}
+}
+
+func TestPickerBehaviors(t *testing.T) {
+	t.Run("request headers", func(t *testing.T) {
+		ctx := rpcmetadata.WithOutContext(context.Background(), rpcmetadata.Pairs(
+			":path", "/from-metadata",
+			"x-env", "prod",
+		))
+		headers := requestHeaders(ctx)
+		if headers[":path"] != "/from-metadata" || headers["x-env"] != "prod" {
+			t.Fatalf("requestHeaders() = %#v", headers)
+		}
+		if empty := requestHeaders(context.Background()); len(empty) != 0 {
+			t.Fatalf("requestHeaders(empty) = %#v, want empty", empty)
+		}
+	})
+
+	t.Run("weighted cluster selection", func(t *testing.T) {
+		instance := newDeterministicBalancer(t, &recordingBalancerClient{})
+		//nolint:gosec // Deterministic pseudo-random source is required for test assertions.
+		expectedRNG := rand.New(rand.NewSource(1))
+		randomWeight := expectedRNG.Uint32() % 3
+		want := "canary"
+		if randomWeight < 2 {
+			want = "stable"
+		}
+
+		got := instance.selectWeightedCluster(&xdsresource.WeightedClusters{
+			Clusters: []*xdsresource.WeightedCluster{
+				{Name: "stable", Weight: 2},
+				{Name: "canary", Weight: 1},
+			},
+			TotalWeight: 3,
+		})
+		if got != want {
+			t.Fatalf("selectWeightedCluster() = %q, want %q", got, want)
+		}
+		if got := instance.selectWeightedCluster(&xdsresource.WeightedClusters{}); got != "" {
+			t.Fatalf("selectWeightedCluster(empty) = %q, want empty", got)
+		}
+		if got := instance.selectWeightedCluster(&xdsresource.WeightedClusters{
+			Clusters: []*xdsresource.WeightedCluster{{Name: "stable"}},
+		}); got != "stable" {
+			t.Fatalf("selectWeightedCluster(zero total) = %q, want stable", got)
+		}
+	})
+
+	t.Run("no route", func(t *testing.T) {
+		instance := newDeterministicBalancer(t, &recordingBalancerClient{})
+		picker := instance.buildPicker()
+		if _, err := picker.Next(balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/Method"}); !errors.Is(
+			err,
+			balancer.ErrNoAvailableInstance,
+		) {
+			t.Fatalf("Next() error = %v, want ErrNoAvailableInstance", err)
+		}
+	})
+
+	t.Run("rate limited", func(t *testing.T) {
+		instance := newDeterministicBalancer(t, &recordingBalancerClient{
+			clients: map[string]*recordingRemoteClient{
+				"10.0.0.1:8080": {address: "10.0.0.1", port: 8080, state: remote.Ready},
+			},
+		})
+		limiter := NewRateLimiter(&RateLimiterConfig{
+			MaxTokens:     0,
+			TokensPerFill: 0,
+			FillInterval:  time.Hour,
+		})
+		defer limiter.Stop()
+
+		instance.vhosts = testRoute("cluster-a", nil)
+		instance.endpoints["cluster-a"] = []*weightedEndpoint{{
+			Cluster:  "cluster-a",
+			Endpoint: xdsresource.Endpoint{Address: "10.0.0.1", Port: 8080},
+			Weight:   1,
+		}}
+		instance.rateLimiters["cluster-a"] = limiter
+
+		_, err := instance.buildPicker().Next(balancer.RPCInfo{
+			Ctx:    context.Background(),
+			Method: "/svc/Method",
+		})
+		if !errors.Is(err, errRateLimitExceeded) {
+			t.Fatalf("Next() error = %v, want errRateLimitExceeded", err)
+		}
+	})
+
+	t.Run("circuit breaker and endpoint failures", func(t *testing.T) {
+		instance := newDeterministicBalancer(t, &recordingBalancerClient{
+			clients: map[string]*recordingRemoteClient{
+				"10.0.0.1:8080": {address: "10.0.0.1", port: 8080, state: remote.TransientFailure},
+			},
+		})
+		instance.vhosts = testRoute("cluster-a", nil)
+		instance.endpoints["cluster-a"] = []*weightedEndpoint{{
+			Cluster:  "cluster-a",
+			Endpoint: xdsresource.Endpoint{Address: "10.0.0.1", Port: 8080},
+			Weight:   1,
+		}}
+
+		openBreaker := NewCircuitBreaker(&CircuitBreakerConfig{MaxRequests: 1})
+		if !openBreaker.TryAcquire(ResourceRequest) {
+			t.Fatal("pre-acquire request failed")
+		}
+		instance.circuitBreakers["cluster-a"] = openBreaker
+		if _, err := instance.buildPicker().Next(balancer.RPCInfo{
+			Ctx:    context.Background(),
+			Method: "/svc/Method",
+		}); err == nil || !strings.Contains(err.Error(), "circuit breaker open") {
+			t.Fatalf("Next() error = %v, want circuit breaker open", err)
+		}
+		openBreaker.Release(ResourceRequest)
+
+		readyBreaker := NewCircuitBreaker(&CircuitBreakerConfig{MaxRequests: 1})
+		instance.circuitBreakers["cluster-a"] = readyBreaker
+		if _, err := instance.buildPicker().Next(balancer.RPCInfo{
+			Ctx:    context.Background(),
+			Method: "/svc/Method",
+		}); !errors.Is(err, balancer.ErrNoAvailableInstance) {
+			t.Fatalf("Next() error = %v, want ErrNoAvailableInstance", err)
+		}
+		if stats := readyBreaker.GetStats(); stats.ActiveRequests != 0 {
+			t.Fatalf("breaker stats after ready failure = %#v", stats)
+		}
+
+		instance.endpoints["cluster-a"] = nil
+		if _, err := instance.buildPicker().Next(balancer.RPCInfo{
+			Ctx:    context.Background(),
+			Method: "/svc/Method",
+		}); !errors.Is(err, balancer.ErrNoAvailableInstance) {
+			t.Fatalf("Next() error = %v, want ErrNoAvailableInstance", err)
+		}
+	})
+
+	t.Run("report and remote client", func(t *testing.T) {
+		instance := newDeterministicBalancer(t, &recordingBalancerClient{})
+		client := &recordingRemoteClient{
+			address: "10.0.0.9",
+			port:    8080,
+			state:   remote.Ready,
+		}
+		breaker := NewCircuitBreaker(&CircuitBreakerConfig{MaxRequests: 1})
+		if !breaker.TryAcquire(ResourceRequest) {
+			t.Fatal("breaker acquire failed")
+		}
+		detector := NewOutlierDetector(&OutlierDetectionConfig{
+			Consecutive5xx:          1,
+			BaseEjectionTime:        time.Minute,
+			MaxEjectionTime:         time.Minute,
+			MaxEjectionPercent:      100,
+			EnforcingConsecutive5xx: 100,
+		})
+		key := "10.0.0.9:8080"
+		inFlight := int32(1)
+		instance.inFlight[key] = &inFlight
+
+		result := &pickResult{
+			endpoint:        client,
+			balancer:        instance,
+			inflightKey:     key,
+			circuitBreaker:  breaker,
+			outlierDetector: detector,
+		}
+		if result.RemoteClient() != client {
+			t.Fatal("RemoteClient() did not return the selected client")
+		}
+
+		result.Report(errors.New("rpc failed"))
+		if got := atomic.LoadInt32(instance.inFlight[key]); got != 0 {
+			t.Fatalf("inFlight after Report() = %d, want 0", got)
+		}
+		if stats := breaker.GetStats(); stats.ActiveRequests != 0 {
+			t.Fatalf("breaker stats after Report() = %#v", stats)
+		}
+		if !detector.IsEjected(key) {
+			t.Fatal("outlier detector did not eject the failing endpoint")
+		}
+	})
+
+	t.Run("selection helpers", func(t *testing.T) {
+		instance := newDeterministicBalancer(t, &recordingBalancerClient{})
+		endpoints := []*weightedEndpoint{
+			{
+				Cluster:  "cluster-a",
+				Endpoint: xdsresource.Endpoint{Address: "10.0.0.1", Port: 8080},
+				Weight:   0,
+			},
+			{
+				Cluster:  "cluster-a",
+				Endpoint: xdsresource.Endpoint{Address: "10.0.0.2", Port: 8080},
+				Weight:   0,
+			},
+		}
+		if got := instance.selectRoundRobin(nil); got != nil {
+			t.Fatalf("selectRoundRobin(nil) = %#v, want nil", got)
+		}
+		if got := instance.selectRoundRobin(endpoints); got != endpoints[0] {
+			t.Fatalf("selectRoundRobin(zero weight) = %#v, want first endpoint", got)
+		}
+		if got := instance.selectRandom(nil); got != nil {
+			t.Fatalf("selectRandom(nil) = %#v, want nil", got)
+		}
+		if got := instance.selectLeastRequest(nil); got != nil {
+			t.Fatalf("selectLeastRequest(nil) = %#v, want nil", got)
+		}
+
+		endpoints[0].Weight = 1
+		endpoints[1].Weight = 2
+		instance.inFlight[endpointAddress(endpoints[0])] = new(int32)
+		one := int32(1)
+		instance.inFlight[endpointAddress(endpoints[1])] = &one
+		if got := instance.selectEndpoint("cluster-a", nil); got != nil {
+			t.Fatalf("selectEndpoint(missing cluster map) = %#v, want nil", got)
+		}
+
+		instance.endpoints["cluster-a"] = endpoints
+		instance.clusterPolicies["cluster-a"] = clusterPolicy{LBPolicy: "least_request"}
+		if got := instance.selectEndpoint("cluster-a", nil); got != endpoints[0] {
+			t.Fatalf("selectEndpoint(least_request) = %#v, want first endpoint", got)
+		}
+
+		detector := NewOutlierDetector(&OutlierDetectionConfig{
+			Consecutive5xx:          1,
+			BaseEjectionTime:        time.Minute,
+			MaxEjectionTime:         time.Minute,
+			MaxEjectionPercent:      100,
+			EnforcingConsecutive5xx: 100,
+		})
+		detector.ReportResult(endpointAddress(endpoints[0]), errors.New("boom"), 503)
+		filtered := filterHealthyEndpoints(endpoints, detector)
+		if len(filtered) != 1 || filtered[0] != endpoints[1] {
+			t.Fatalf("filterHealthyEndpoints() = %#v", filtered)
+		}
+
+		instance.clusterPolicies["cluster-a"] = clusterPolicy{LBPolicy: "random"}
+		got := instance.selectEndpoint("cluster-a", detector)
+		if got != endpoints[1] {
+			t.Fatalf("selectEndpoint(random healthy) = %#v, want second endpoint", got)
+		}
+
+		instance.clusterPolicies = map[string]clusterPolicy{}
+		got = instance.selectEndpoint("cluster-a", nil)
+		if !slices.Contains(endpoints, got) {
+			t.Fatalf("selectEndpoint(default round_robin) = %#v, want one of %#v", got, endpoints)
+		}
+	})
 }
