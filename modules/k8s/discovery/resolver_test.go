@@ -17,6 +17,7 @@ package discovery //nolint:staticcheck // Deprecated corev1 endpoint types are c
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
@@ -437,4 +439,279 @@ func TestResolverWatchLoopStopsAfterContextCancellation(t *testing.T) {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+func TestResolverProviderDefaultsAndLifecycleErrorPaths(t *testing.T) {
+	provider := ResolverProvider(nil)
+	resolver, err := provider.New("default")
+	if err != nil {
+		t.Fatalf("provider.New() error = %v", err)
+	}
+	typed, ok := resolver.(*Resolver)
+	if !ok {
+		t.Fatalf("provider.New() type = %T, want *Resolver", resolver)
+	}
+	if typed.cfg.Mode != string(modeEndpointSlice) {
+		t.Fatalf("provider default Mode = %q, want endpointslice", typed.cfg.Mode)
+	}
+
+	sentinel := errors.New("boom")
+	errResolver := NewResolverWithError("default", ResolverConfig{}, sentinel)
+	rec := &stateRecorder{ch: make(chan yresolver.State, 1)}
+	if err := errResolver.AddWatch("svc", rec); !errors.Is(err, sentinel) {
+		t.Fatalf("AddWatch() error = %v, want %v", err, sentinel)
+	}
+	if err := errResolver.DelWatch("svc", rec); !errors.Is(err, sentinel) {
+		t.Fatalf("DelWatch() error = %v, want %v", err, sentinel)
+	}
+
+	plain, err := NewResolver("default", ResolverConfig{})
+	if err != nil {
+		t.Fatalf("NewResolver() error = %v", err)
+	}
+	if err := plain.AddWatch("", rec); err == nil {
+		t.Fatal("AddWatch() expected empty app name error")
+	}
+
+	cached := &Resolver{
+		cancels: map[string]context.CancelFunc{"svc": func() {}},
+		states: map[string]yresolver.State{
+			"svc": yresolver.BaseState{
+				Attributes: map[string]any{"service": "svc"},
+			},
+		},
+		watchers: map[string]map[yresolver.Client]struct{}{},
+	}
+	if err := cached.AddWatch("svc", rec); err != nil {
+		t.Fatalf("AddWatch() error = %v", err)
+	}
+	select {
+	case state := <-rec.ch:
+		if state.GetAttributes()["service"] != "svc" {
+			t.Fatalf("cached state service = %v, want svc", state.GetAttributes()["service"])
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for cached state update")
+	}
+
+	cancelled := make(chan struct{})
+	toDelete := &stateRecorder{ch: make(chan yresolver.State, 1)}
+	managed := &Resolver{
+		watchers: map[string]map[yresolver.Client]struct{}{
+			"svc": {toDelete: {}},
+		},
+		cancels: map[string]context.CancelFunc{
+			"svc": func() { close(cancelled) },
+		},
+		states: map[string]yresolver.State{
+			"svc": yresolver.BaseState{},
+		},
+	}
+	if err := managed.DelWatch("svc", toDelete); err != nil {
+		t.Fatalf("DelWatch() error = %v", err)
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for cancel callback")
+	}
+	if len(managed.watchers) != 0 || len(managed.cancels) != 0 || len(managed.states) != 0 {
+		t.Fatalf(
+			"DelWatch() did not clean resolver state: %#v %#v %#v",
+			managed.watchers,
+			managed.cancels,
+			managed.states,
+		)
+	}
+}
+
+func TestResolverWatchAndListErrorPaths(t *testing.T) {
+	t.Run("watch client error", func(t *testing.T) {
+		r := &Resolver{cfg: ResolverConfig{}}
+		r.clientForConfig = func(string) (kubernetes.Interface, error) {
+			return nil, errors.New("client boom")
+		}
+		if err := r.watch(context.Background(), "svc"); err == nil ||
+			!strings.Contains(err.Error(), "failed to get kube client") {
+			t.Fatalf("watch() error = %v, want kube client error", err)
+		}
+	})
+
+	t.Run("watch endpoints watch error", func(t *testing.T) {
+		client := k8sfake.NewSimpleClientset()
+		client.PrependWatchReactor(
+			"endpoints",
+			func(action k8stesting.Action) (bool, watch.Interface, error) {
+				return true, nil, errors.New("watch boom")
+			},
+		)
+		r := &Resolver{cfg: ResolverConfig{Namespace: "default"}}
+		if err := r.watchEndpoints(context.Background(), client, "svc"); err == nil ||
+			!strings.Contains(err.Error(), "failed to watch endpoints") {
+			t.Fatalf("watchEndpoints() error = %v, want watch error", err)
+		}
+	})
+
+	t.Run("watch endpoints list error", func(t *testing.T) {
+		client := k8sfake.NewSimpleClientset()
+		fw := watch.NewFake()
+		client.PrependWatchReactor(
+			"endpoints",
+			func(action k8stesting.Action) (bool, watch.Interface, error) {
+				return true, fw, nil
+			},
+		)
+		r := &Resolver{cfg: ResolverConfig{Namespace: "default"}}
+		if err := r.watchEndpoints(context.Background(), client, "missing"); err == nil ||
+			!strings.Contains(err.Error(), "failed to list endpoints") {
+			t.Fatalf("watchEndpoints() error = %v, want list error", err)
+		}
+	})
+
+	t.Run("watch endpointslices watch error", func(t *testing.T) {
+		client := k8sfake.NewSimpleClientset()
+		client.PrependWatchReactor(
+			"endpointslices",
+			func(action k8stesting.Action) (bool, watch.Interface, error) {
+				return true, nil, errors.New("watch boom")
+			},
+		)
+		r := &Resolver{cfg: ResolverConfig{Namespace: "default"}}
+		if err := r.watchEndpointSlice(context.Background(), client, "svc"); err == nil ||
+			!strings.Contains(err.Error(), "failed to watch endpointslices") {
+			t.Fatalf("watchEndpointSlice() error = %v, want watch error", err)
+		}
+	})
+
+	t.Run("watch endpointslices list error", func(t *testing.T) {
+		client := k8sfake.NewSimpleClientset()
+		fw := watch.NewFake()
+		client.PrependWatchReactor(
+			"endpointslices",
+			func(action k8stesting.Action) (bool, watch.Interface, error) {
+				return true, fw, nil
+			},
+		)
+		client.PrependReactor(
+			"list",
+			"endpointslices",
+			func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, errors.New("list boom")
+			},
+		)
+		r := &Resolver{
+			cfg:      ResolverConfig{Namespace: "default"},
+			states:   map[string]yresolver.State{},
+			watchers: map[string]map[yresolver.Client]struct{}{},
+			cancels:  map[string]context.CancelFunc{},
+		}
+		if err := r.watchEndpointSlice(context.Background(), client, "missing"); err == nil ||
+			!strings.Contains(err.Error(), "failed to list endpointslices") {
+			t.Fatalf("watchEndpointSlice() error = %v, want list error", err)
+		}
+	})
+}
+
+func TestResolverStateConversionFilters(t *testing.T) {
+	r := &Resolver{
+		cfg: ResolverConfig{
+			Protocol: "grpc",
+			EndpointAttributes: map[string]string{
+				"cluster": "prod",
+			},
+		},
+	}
+	//nolint:staticcheck // Intentional coverage for deprecated Endpoints compatibility path.
+	endpoints := &corev1.Endpoints{
+		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: "default"},
+		//nolint:staticcheck // Intentional coverage for deprecated Endpoints compatibility path.
+		Subsets: []corev1.EndpointSubset{
+			{
+				Addresses: []corev1.EndpointAddress{
+					{IP: ""},
+					{IP: "10.0.0.1"},
+				},
+			},
+			{
+				Addresses: []corev1.EndpointAddress{
+					{IP: "10.0.0.2", Hostname: "host-1", NodeName: strPtr("node-1")},
+				},
+				Ports: []corev1.EndpointPort{{Name: "grpc", Port: 9090}},
+			},
+		},
+	}
+
+	state := r.endpointsToState(endpoints)
+	items := state.GetEndpoints()
+	if len(items) != 1 {
+		t.Fatalf("endpoints len = %d, want 1", len(items))
+	}
+	if items[0].GetAttributes()["cluster"] != "prod" {
+		t.Fatalf("cluster = %v, want prod", items[0].GetAttributes()["cluster"])
+	}
+	if items[0].GetAttributes()["hostname"] != "host-1" {
+		t.Fatalf("hostname = %v, want host-1", items[0].GetAttributes()["hostname"])
+	}
+}
+
+func TestEndpointSlicesToStateAndSlicePortValueFilters(t *testing.T) {
+	portNameHTTP := "http"
+	portNameGRPC := "grpc"
+	port9090 := int32(9090)
+	port8080 := int32(8080)
+
+	r := &Resolver{
+		cfg: ResolverConfig{
+			Protocol: "grpc",
+			PortName: "grpc",
+			Port:     9090,
+			EndpointAttributes: map[string]string{
+				"cluster": "prod",
+			},
+		},
+	}
+
+	if _, ok := r.slicePortValue(discoveryv1.EndpointPort{}); ok {
+		t.Fatal("slicePortValue() expected false for nil port")
+	}
+	if _, ok := r.slicePortValue(discoveryv1.EndpointPort{Name: &portNameHTTP, Port: &port9090}); ok {
+		t.Fatal("slicePortValue() expected false for mismatched port name")
+	}
+	if _, ok := r.slicePortValue(discoveryv1.EndpointPort{Name: &portNameGRPC, Port: &port8080}); ok {
+		t.Fatal("slicePortValue() expected false for mismatched port number")
+	}
+	if got, ok := r.slicePortValue(discoveryv1.EndpointPort{Name: &portNameGRPC, Port: &port9090}); !ok ||
+		got != 9090 {
+		t.Fatalf("slicePortValue() = (%d, %v), want (9090, true)", got, ok)
+	}
+
+	slices := []discoveryv1.EndpointSlice{{
+		Ports: []discoveryv1.EndpointPort{
+			{Name: &portNameHTTP, Port: &port9090},
+			{Name: &portNameGRPC},
+			{Name: &portNameGRPC, Port: &port8080},
+			{Name: &portNameGRPC, Port: &port9090},
+		},
+		Endpoints: []discoveryv1.Endpoint{
+			{},
+			{Addresses: []string{""}},
+			{
+				Addresses: []string{"10.0.0.3"},
+				NodeName:  strPtr("node-1"),
+				Zone:      strPtr("zone-a"),
+			},
+		},
+	}}
+
+	state := r.endpointSlicesToState(slices)
+	items := state.GetEndpoints()
+	if len(items) != 1 {
+		t.Fatalf("endpoints len = %d, want 1", len(items))
+	}
+	if items[0].GetAddress() != "10.0.0.3:9090" {
+		t.Fatalf("endpoint address = %s, want 10.0.0.3:9090", items[0].GetAddress())
+	}
+	if items[0].GetAttributes()["cluster"] != "prod" {
+		t.Fatalf("cluster = %v, want prod", items[0].GetAttributes()["cluster"])
+	}
 }
