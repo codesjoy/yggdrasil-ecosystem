@@ -154,7 +154,10 @@ func TestModuleIdentityInvalidSourceAndGovernanceMerge(t *testing.T) {
 					Defaults map[string]any            `mapstructure:"defaults"`
 					Services map[string]map[string]any `mapstructure:"services"`
 				}{
-					Defaults: map[string]any{"namespace": "default", "rate_limit": map[string]any{"enable": true}},
+					Defaults: map[string]any{
+						"namespace":  "default",
+						"rate_limit": map[string]any{"enable": true},
+					},
 					Services: map[string]map[string]any{"svc": {"caller_service": "caller"}},
 				},
 			},
@@ -179,7 +182,9 @@ func TestModuleIdentityInvalidSourceAndGovernanceMerge(t *testing.T) {
 					Config map[string]any `mapstructure:"config"`
 				}{
 					"svc": {
-						"polaris": {Config: map[string]any{"addresses": []string{"127.0.0.1:8091"}}},
+						"polaris": {
+							Config: map[string]any{"addresses": []string{"127.0.0.1:8091"}},
+						},
 					},
 				},
 			},
@@ -248,8 +253,11 @@ func TestModuleInitAndConfigSourceBuilderErrors(t *testing.T) {
 	_, _, err = builder(
 		configchain.BuildContext{},
 		configchain.SourceSpec{
-			Kind:   "polaris",
-			Config: map[string]any{"file_name": "application.yaml", "fetch_timeout": "bad-duration"},
+			Kind: "polaris",
+			Config: map[string]any{
+				"file_name":     "application.yaml",
+				"fetch_timeout": "bad-duration",
+			},
 		},
 	)
 	if err == nil {

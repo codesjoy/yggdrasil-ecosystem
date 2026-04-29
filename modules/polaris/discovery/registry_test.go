@@ -201,8 +201,10 @@ func TestRegistryConstructorsAndDecodeMap(t *testing.T) {
 		t.Fatalf("NewRegistryFromMap() error = %v", err)
 	}
 	got := fromMap.(*Registry)
-	if got.cfg.Namespace != "ns" || got.cfg.ServiceToken != "token" || got.cfg.TTL != 5*time.Second ||
-		!got.cfg.AutoHeartbeat || got.cfg.RetryCount != 2 {
+	if got.cfg.Namespace != "ns" || got.cfg.ServiceToken != "token" ||
+		got.cfg.TTL != 5*time.Second ||
+		!got.cfg.AutoHeartbeat ||
+		got.cfg.RetryCount != 2 {
 		t.Fatalf("decoded registry config = %#v", got.cfg)
 	}
 
@@ -219,10 +221,12 @@ func TestRegistryConstructorsAndDecodeMap(t *testing.T) {
 	}
 
 	withErr := NewRegistryWithError(RegistryConfig{}, errors.New("boom"))
-	if err := withErr.Register(context.Background(), testInstance{}); err == nil || err.Error() != "boom" {
+	if err := withErr.Register(context.Background(), testInstance{}); err == nil ||
+		err.Error() != "boom" {
 		t.Fatalf("Register() error = %v", err)
 	}
-	if err := withErr.Deregister(context.Background(), testInstance{}); err == nil || err.Error() != "boom" {
+	if err := withErr.Deregister(context.Background(), testInstance{}); err == nil ||
+		err.Error() != "boom" {
 		t.Fatalf("Deregister() error = %v", err)
 	}
 

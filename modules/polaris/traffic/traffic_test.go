@@ -17,7 +17,6 @@ package traffic
 import (
 	"context"
 	"errors"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -75,6 +74,7 @@ func (a *trafficCircuitBreakerAPI) Check(res model.Resource) (*model.CheckResult
 	a.checks = append(a.checks, res)
 	return a.checkResp, a.checkErr
 }
+
 func (a *trafficCircuitBreakerAPI) Report(stat *model.ResourceStat) error {
 	a.reports = append(a.reports, stat)
 	return a.reportErr
@@ -111,7 +111,9 @@ func (a *trafficRouterAPI) ProcessLoadBalance(
 	}
 	if resp, ok := req.DstInstances.(*model.InstancesResponse); ok && len(resp.Instances) > 0 {
 		return &model.OneInstanceResponse{
-			InstancesResponse: model.InstancesResponse{Instances: []model.Instance{resp.Instances[0]}},
+			InstancesResponse: model.InstancesResponse{
+				Instances: []model.Instance{resp.Instances[0]},
+			},
 		}, nil
 	}
 	return &model.OneInstanceResponse{}, nil
@@ -132,6 +134,7 @@ func (c *trafficRemoteClient) NewStream(
 ) (stream.ClientStream, error) {
 	return nil, nil
 }
+
 func (c *trafficRemoteClient) Close() error {
 	c.closeHits++
 	return c.closeErr
@@ -173,39 +176,6 @@ func restoreTrafficGlobals(t *testing.T) {
 	})
 }
 
-func trafficTestState(ids ...string) yresolver.State {
-	endpoints := make([]yresolver.Endpoint, 0, len(ids))
-	instances := make([]model.Instance, 0, len(ids))
-	for idx, id := range ids {
-		port := uint32(9000 + idx)
-		instances = append(instances, &fakeInstance{
-			namespace: "default",
-			service:   "svc",
-			id:        id,
-			host:      "127.0.0.1",
-			port:      port,
-			protocol:  "grpc",
-			healthy:   true,
-			weight:    100,
-			metadata:  map[string]string{},
-		})
-		endpoints = append(endpoints, yresolver.BaseEndpoint{
-			Address:    "127.0.0.1:" + strconv.Itoa(int(port)),
-			Protocol:   "grpc",
-			Attributes: map[string]any{"instance_id": id},
-		})
-	}
-	return yresolver.BaseState{
-		Attributes: map[string]any{
-			"polaris_instances_response": &model.InstancesResponse{
-				ServiceInfo: model.ServiceInfo{Service: "svc", Namespace: "default"},
-				Instances:   instances,
-			},
-		},
-		Endpoints: endpoints,
-	}
-}
-
 func quotaArgsToMap(args []model.Argument) map[string]string {
 	out := make(map[string]string, len(args))
 	for _, arg := range args {
@@ -219,7 +189,8 @@ func TestUnaryClientInterceptorProvidersExposeNames(t *testing.T) {
 	if len(providers) != 2 {
 		t.Fatalf("providers len = %d, want 2", len(providers))
 	}
-	if providers[0].Name() != "polaris_ratelimit" || providers[1].Name() != "polaris_circuitbreaker" {
+	if providers[0].Name() != "polaris_ratelimit" ||
+		providers[1].Name() != "polaris_circuitbreaker" {
 		t.Fatalf("provider names = %q, %q", providers[0].Name(), providers[1].Name())
 	}
 }
@@ -253,7 +224,10 @@ func TestBuildPolarisRateLimitUnaryCoversControlFlow(t *testing.T) {
 		}, "svc")
 		if err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
 			return nil
-		}); !errors.Is(err, wantErr) {
+		}); !errors.Is(
+			err,
+			wantErr,
+		) {
 			t.Fatalf("unary error = %v, want %v", err, wantErr)
 		}
 	})
@@ -295,7 +269,8 @@ func TestBuildPolarisRateLimitUnaryCoversControlFlow(t *testing.T) {
 			t.Fatalf("quota reqs = %d, want 1", len(api.reqs))
 		}
 		req := api.reqs[0].(*model.QuotaRequestImpl)
-		if req.GetNamespace() != "custom" || req.GetService() != "svc" || req.GetMethod() != "/svc/method" {
+		if req.GetNamespace() != "custom" || req.GetService() != "svc" ||
+			req.GetMethod() != "/svc/method" {
 			t.Fatalf("quota request = %#v", req)
 		}
 		if req.GetToken() != 2 {
@@ -314,23 +289,36 @@ func TestBuildPolarisRateLimitUnaryCoversControlFlow(t *testing.T) {
 		api.err = errors.New("quota failed")
 		if err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
 			return nil
-		}); err == nil || err.Error() != "quota failed" {
+		}); err == nil ||
+			err.Error() != "quota failed" {
 			t.Fatalf("quota error = %v", err)
 		}
 
 		api.err = nil
 		future.resp = nil
-		err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			return nil
-		})
+		err := unary(
+			context.Background(),
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				return nil
+			},
+		)
 		if status.FromError(err).Code() != code.Code_UNKNOWN {
 			t.Fatalf("empty response code = %v", status.FromError(err).Code())
 		}
 
 		future.resp = &model.QuotaResponse{Code: model.QuotaResultLimited}
-		err = unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			return nil
-		})
+		err = unary(
+			context.Background(),
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				return nil
+			},
+		)
 		if status.FromError(err).Code() != code.Code_RESOURCE_EXHAUSTED ||
 			!strings.Contains(err.Error(), "polaris rate limit exceeded") {
 			t.Fatalf("limited error = %v", err)
@@ -338,7 +326,9 @@ func TestBuildPolarisRateLimitUnaryCoversControlFlow(t *testing.T) {
 	})
 
 	t.Run("wait branch honors context cancellation", func(t *testing.T) {
-		future := &trafficQuotaFuture{resp: &model.QuotaResponse{Code: model.QuotaResultOk, WaitMs: 50}}
+		future := &trafficQuotaFuture{
+			resp: &model.QuotaResponse{Code: model.QuotaResultOk, WaitMs: 50},
+		}
 		api := &trafficLimitAPI{future: future}
 		getRateLimitAPI = func(string, governanceConfig) (sdk.LimitAPI, error) { return api, nil }
 		unary := buildPolarisRateLimitUnary(func(string) map[string]any {
@@ -347,18 +337,33 @@ func TestBuildPolarisRateLimitUnaryCoversControlFlow(t *testing.T) {
 
 		cancelCtx, cancel := context.WithCancel(context.Background())
 		cancel()
-		err := unary(cancelCtx, "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			return nil
-		})
+		err := unary(
+			cancelCtx,
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				return nil
+			},
+		)
 		if status.FromError(err).Code() != code.Code_CANCELLED {
 			t.Fatalf("cancel error code = %v", status.FromError(err).Code())
 		}
 
-		deadlineCtx, deadlineCancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		deadlineCtx, deadlineCancel := context.WithDeadline(
+			context.Background(),
+			time.Now().Add(-time.Second),
+		)
 		defer deadlineCancel()
-		err = unary(deadlineCtx, "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			return nil
-		})
+		err = unary(
+			deadlineCtx,
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				return nil
+			},
+		)
 		if status.FromError(err).Code() != code.Code_DEADLINE_EXCEEDED {
 			t.Fatalf("deadline error code = %v", status.FromError(err).Code())
 		}
@@ -394,19 +399,31 @@ func TestBuildPolarisCircuitBreakerUnaryCoversControlFlow(t *testing.T) {
 		}, "svc")
 		if err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
 			return nil
-		}); !errors.Is(err, wantErr) {
+		}); !errors.Is(
+			err,
+			wantErr,
+		) {
 			t.Fatalf("unary error = %v, want %v", err, wantErr)
 		}
 
-		api := &trafficCircuitBreakerAPI{checkResp: &model.CheckResult{Pass: false, RuleName: "rule-a"}}
+		api := &trafficCircuitBreakerAPI{
+			checkResp: &model.CheckResult{Pass: false, RuleName: "rule-a"},
+		}
 		getCircuitBreakerAPI = func(string, governanceConfig) (sdk.CircuitBreakerAPI, error) { return api, nil }
 		unary = buildPolarisCircuitBreakerUnary(func(string) map[string]any {
 			return map[string]any{"circuit_breaker": map[string]any{"enable": true}}
 		}, "svc")
-		err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			return nil
-		})
-		if status.FromError(err).Code() != code.Code_UNAVAILABLE || !strings.Contains(err.Error(), "rule-a") {
+		err := unary(
+			context.Background(),
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				return nil
+			},
+		)
+		if status.FromError(err).Code() != code.Code_UNAVAILABLE ||
+			!strings.Contains(err.Error(), "rule-a") {
 			t.Fatalf("open circuit error = %v", err)
 		}
 	})
@@ -426,23 +443,31 @@ func TestBuildPolarisCircuitBreakerUnaryCoversControlFlow(t *testing.T) {
 		api.checkErr = errors.New("check failed")
 		if err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
 			return nil
-		}); err == nil || err.Error() != "check failed" {
+		}); err == nil ||
+			err.Error() != "check failed" {
 			t.Fatalf("check error = %v", err)
 		}
 
 		api.checkErr = nil
 		api.checkResp = &model.CheckResult{Pass: true}
 		invokeErr := xerror.New(code.Code_INTERNAL, "invoke failed")
-		err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			return invokeErr
-		})
+		err := unary(
+			context.Background(),
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				return invokeErr
+			},
+		)
 		if !errors.Is(err, invokeErr) {
 			t.Fatalf("invoke error = %v, want %v", err, invokeErr)
 		}
 		if len(api.reports) != 1 {
 			t.Fatalf("reports len = %d, want 1", len(api.reports))
 		}
-		if api.reports[0].RetStatus != model.RetFail || api.reports[0].RetCode != code.Code_INTERNAL.String() {
+		if api.reports[0].RetStatus != model.RetFail ||
+			api.reports[0].RetCode != code.Code_INTERNAL.String() {
 			t.Fatalf("failure report = %#v", api.reports[0])
 		}
 
@@ -452,7 +477,8 @@ func TestBuildPolarisCircuitBreakerUnaryCoversControlFlow(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("success invoke error = %v", err)
 		}
-		if len(api.reports) != 1 || api.reports[0].RetStatus != model.RetSuccess || api.reports[0].RetCode != "0" {
+		if len(api.reports) != 1 || api.reports[0].RetStatus != model.RetSuccess ||
+			api.reports[0].RetCode != "0" {
 			t.Fatalf("success report = %#v", api.reports)
 		}
 	})
@@ -471,7 +497,8 @@ func TestBalancerProviderAndConstructorUseInjectedAPIs(t *testing.T) {
 		if serviceName != "svc" {
 			t.Fatalf("serviceName = %q, want svc", serviceName)
 		}
-		if cfg.Namespace != "default" || !cfg.Routing.Enable || cfg.Routing.LbPolicy != "round_robin" {
+		if cfg.Namespace != "default" || !cfg.Routing.Enable ||
+			cfg.Routing.LbPolicy != "round_robin" {
 			t.Fatalf("governance config = %#v", cfg)
 		}
 		return router, nil, limit, nil, cb, nil
@@ -508,10 +535,16 @@ func TestPolarisBalancerCloseAndUpdateState(t *testing.T) {
 		errA := errors.New("close a")
 		errB := errors.New("close b")
 		b := &polarisBalancer{
-			cli:              cli,
-			serviceName:      "svc",
-			remoteByName:     map[string]remote.Client{"a": &trafficRemoteClient{name: "a", state: remote.Ready, closeErr: errA}, "b": &trafficRemoteClient{name: "b", state: remote.Ready, closeErr: errB}},
-			remoteByInstance: map[string]remote.Client{"a": &trafficRemoteClient{name: "a", state: remote.Ready}, "b": &trafficRemoteClient{name: "b", state: remote.Ready}},
+			cli:         cli,
+			serviceName: "svc",
+			remoteByName: map[string]remote.Client{
+				"a": &trafficRemoteClient{name: "a", state: remote.Ready, closeErr: errA},
+				"b": &trafficRemoteClient{name: "b", state: remote.Ready, closeErr: errB},
+			},
+			remoteByInstance: map[string]remote.Client{
+				"a": &trafficRemoteClient{name: "a", state: remote.Ready},
+				"b": &trafficRemoteClient{name: "b", state: remote.Ready},
+			},
 		}
 
 		err := b.Close()
@@ -521,7 +554,10 @@ func TestPolarisBalancerCloseAndUpdateState(t *testing.T) {
 		if len(cli.updates) != 1 {
 			t.Fatalf("updates len = %d, want 1", len(cli.updates))
 		}
-		if _, err := cli.updates[0].Picker.Next(balancer.RPCInfo{}); !errors.Is(err, balancer.ErrNoAvailableInstance) {
+		if _, err := cli.updates[0].Picker.Next(balancer.RPCInfo{}); !errors.Is(
+			err,
+			balancer.ErrNoAvailableInstance,
+		) {
 			t.Fatalf("closed picker error = %v", err)
 		}
 	})
@@ -562,9 +598,21 @@ func TestPolarisBalancerCloseAndUpdateState(t *testing.T) {
 				},
 			},
 			Endpoints: []yresolver.Endpoint{
-				yresolver.BaseEndpoint{Address: "127.0.0.1:9000", Protocol: "grpc", Attributes: map[string]any{"instance_id": "ins-1"}},
-				yresolver.BaseEndpoint{Address: "127.0.0.1:9001", Protocol: "grpc", Attributes: map[string]any{"instance_id": "ins-2"}},
-				yresolver.BaseEndpoint{Address: "127.0.0.1:9002", Protocol: "grpc", Attributes: map[string]any{"instance_id": "ins-3"}},
+				yresolver.BaseEndpoint{
+					Address:    "127.0.0.1:9000",
+					Protocol:   "grpc",
+					Attributes: map[string]any{"instance_id": "ins-1"},
+				},
+				yresolver.BaseEndpoint{
+					Address:    "127.0.0.1:9001",
+					Protocol:   "grpc",
+					Attributes: map[string]any{"instance_id": "ins-2"},
+				},
+				yresolver.BaseEndpoint{
+					Address:    "127.0.0.1:9002",
+					Protocol:   "grpc",
+					Attributes: map[string]any{"instance_id": "ins-3"},
+				},
 			},
 		}
 
@@ -587,10 +635,14 @@ func TestPolarisBalancerCloseAndUpdateState(t *testing.T) {
 func TestPolarisBalancerUpdateRemoteClientStateNoopAfterClose(t *testing.T) {
 	cli := &trafficBalancerClient{}
 	b := &polarisBalancer{
-		cli:              cli,
-		serviceName:      "svc",
-		remoteByName:     map[string]remote.Client{"a": &trafficRemoteClient{name: "a", state: remote.Ready}},
-		remoteByInstance: map[string]remote.Client{"a": &trafficRemoteClient{name: "a", state: remote.Ready}},
+		cli:         cli,
+		serviceName: "svc",
+		remoteByName: map[string]remote.Client{
+			"a": &trafficRemoteClient{name: "a", state: remote.Ready},
+		},
+		remoteByInstance: map[string]remote.Client{
+			"a": &trafficRemoteClient{name: "a", state: remote.Ready},
+		},
 	}
 	if err := b.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
@@ -615,7 +667,8 @@ func TestPolarisPickerRateLimitAndCircuitBreakerBranches(t *testing.T) {
 			},
 			limitErr: errors.New("limit init failed"),
 		}
-		if _, err := p.Next(balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/method"}); err == nil || err.Error() != "limit init failed" {
+		if _, err := p.Next(balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/method"}); err == nil ||
+			err.Error() != "limit init failed" {
 			t.Fatalf("Next() rate limit error = %v", err)
 		}
 
@@ -626,7 +679,8 @@ func TestPolarisPickerRateLimitAndCircuitBreakerBranches(t *testing.T) {
 			},
 			cbErr: errors.New("cb init failed"),
 		}
-		if _, err := p.Next(balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/method"}); err == nil || err.Error() != "cb init failed" {
+		if _, err := p.Next(balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/method"}); err == nil ||
+			err.Error() != "cb init failed" {
 			t.Fatalf("Next() cb error = %v", err)
 		}
 	})
@@ -658,44 +712,60 @@ func TestPolarisPickerRateLimitAndCircuitBreakerBranches(t *testing.T) {
 			t.Fatalf("future released = %d, want 1", future.released)
 		}
 		req := limit.reqs[0].(*model.QuotaRequestImpl)
-		if req.GetNamespace() != "custom" || req.GetService() != "svc" || req.GetMethod() != "/svc/method" {
+		if req.GetNamespace() != "custom" || req.GetService() != "svc" ||
+			req.GetMethod() != "/svc/method" {
 			t.Fatalf("quota request = %#v", req)
 		}
 		if req.GetToken() != 3 {
 			t.Fatalf("quota token = %d, want 3", req.GetToken())
 		}
-		if got := quotaArgsToMap(req.Arguments()); got["tenant"] != "gold" || got["region"] != "ap-sh" {
+		if got := quotaArgsToMap(req.Arguments()); got["tenant"] != "gold" ||
+			got["region"] != "ap-sh" {
 			t.Fatalf("quota args = %#v", got)
 		}
 
 		limit.err = errors.New("quota failed")
-		if err := p.checkRateLimit(context.Background(), "/svc/method"); err == nil || err.Error() != "quota failed" {
+		if err := p.checkRateLimit(context.Background(), "/svc/method"); err == nil ||
+			err.Error() != "quota failed" {
 			t.Fatalf("quota error = %v", err)
 		}
 		limit.err = nil
 		future.resp = nil
-		if err := p.checkRateLimit(context.Background(), "/svc/method"); status.FromError(err).Code() != code.Code_UNKNOWN {
+		if err := p.checkRateLimit(context.Background(), "/svc/method"); status.FromError(err).
+			Code() !=
+			code.Code_UNKNOWN {
 			t.Fatalf("empty response code = %v", status.FromError(err).Code())
 		}
 		future.resp = &model.QuotaResponse{Code: model.QuotaResultLimited, Info: "limited"}
-		if err := p.checkRateLimit(context.Background(), "/svc/method"); status.FromError(err).Code() != code.Code_RESOURCE_EXHAUSTED {
+		if err := p.checkRateLimit(context.Background(), "/svc/method"); status.FromError(err).
+			Code() !=
+			code.Code_RESOURCE_EXHAUSTED {
 			t.Fatalf("limited response code = %v", status.FromError(err).Code())
 		}
 		future.resp = &model.QuotaResponse{Code: model.QuotaResultOk, WaitMs: 50}
 		cancelCtx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if err := p.checkRateLimit(cancelCtx, "/svc/method"); status.FromError(err).Code() != code.Code_CANCELLED {
+		if err := p.checkRateLimit(cancelCtx, "/svc/method"); status.FromError(err).
+			Code() !=
+			code.Code_CANCELLED {
 			t.Fatalf("cancel code = %v", status.FromError(err).Code())
 		}
-		deadlineCtx, deadlineCancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		deadlineCtx, deadlineCancel := context.WithDeadline(
+			context.Background(),
+			time.Now().Add(-time.Second),
+		)
 		defer deadlineCancel()
-		if err := p.checkRateLimit(deadlineCtx, "/svc/method"); status.FromError(err).Code() != code.Code_DEADLINE_EXCEEDED {
+		if err := p.checkRateLimit(deadlineCtx, "/svc/method"); status.FromError(err).
+			Code() !=
+			code.Code_DEADLINE_EXCEEDED {
 			t.Fatalf("deadline code = %v", status.FromError(err).Code())
 		}
 	})
 
 	t.Run("circuit breaker open and report", func(t *testing.T) {
-		cb := &trafficCircuitBreakerAPI{checkResp: &model.CheckResult{Pass: false, RuleName: "rule-a"}}
+		cb := &trafficCircuitBreakerAPI{
+			checkResp: &model.CheckResult{Pass: false, RuleName: "rule-a"},
+		}
 		p := &polarisPicker{
 			serviceName: "svc",
 			readyAny:    []remote.Client{&trafficRemoteClient{name: "ready", state: remote.Ready}},
@@ -705,7 +775,8 @@ func TestPolarisPickerRateLimitAndCircuitBreakerBranches(t *testing.T) {
 			},
 		}
 		_, err := p.Next(balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/method"})
-		if status.FromError(err).Code() != code.Code_UNAVAILABLE || !strings.Contains(err.Error(), "rule-a") {
+		if status.FromError(err).Code() != code.Code_UNAVAILABLE ||
+			!strings.Contains(err.Error(), "rule-a") {
 			t.Fatalf("open circuit error = %v", err)
 		}
 
@@ -724,7 +795,8 @@ func TestPolarisPickerRateLimitAndCircuitBreakerBranches(t *testing.T) {
 		}
 		invokeErr := xerror.New(code.Code_INTERNAL, "invoke failed")
 		pr.Report(invokeErr)
-		if len(cb.reports) != 1 || cb.reports[0].RetStatus != model.RetFail || cb.reports[0].RetCode != code.Code_INTERNAL.String() {
+		if len(cb.reports) != 1 || cb.reports[0].RetStatus != model.RetFail ||
+			cb.reports[0].RetCode != code.Code_INTERNAL.String() {
 			t.Fatalf("failure reports = %#v", cb.reports)
 		}
 	})
@@ -745,14 +817,18 @@ func TestPolarisPickerRoutingAndPickerHelpers(t *testing.T) {
 				Routing: routingConfig{Enable: true},
 			},
 		}
-		if _, err := p.pickRemote(context.Background(), "/svc/method"); err == nil || err.Error() != "route failed" {
+		if _, err := p.pickRemote(context.Background(), "/svc/method"); err == nil ||
+			err.Error() != "route failed" {
 			t.Fatalf("pickRemote route error = %v", err)
 		}
 
 		router.routerErr = nil
 		router.routerResp = &model.InstancesResponse{}
 		p.governance.Routing.RecoverAll = false
-		if _, err := p.pickRemote(context.Background(), "/svc/method"); !errors.Is(err, balancer.ErrNoAvailableInstance) {
+		if _, err := p.pickRemote(context.Background(), "/svc/method"); !errors.Is(
+			err,
+			balancer.ErrNoAvailableInstance,
+		) {
 			t.Fatalf("pickRemote empty error = %v", err)
 		}
 
@@ -764,14 +840,17 @@ func TestPolarisPickerRoutingAndPickerHelpers(t *testing.T) {
 
 		router.routerResp = testResolverState().GetAttributes()["polaris_instances_response"].(*model.InstancesResponse)
 		router.lbErr = errors.New("lb failed")
-		if _, err := p.pickRemote(context.Background(), "/svc/method"); err == nil || err.Error() != "lb failed" {
+		if _, err := p.pickRemote(context.Background(), "/svc/method"); err == nil ||
+			err.Error() != "lb failed" {
 			t.Fatalf("pickRemote lb error = %v", err)
 		}
 
 		router.lbErr = nil
 		router.lbResp = &model.OneInstanceResponse{
 			InstancesResponse: model.InstancesResponse{
-				Instances: []model.Instance{&fakeInstance{id: "missing", host: "127.0.0.1", port: 9999, protocol: "grpc"}},
+				Instances: []model.Instance{
+					&fakeInstance{id: "missing", host: "127.0.0.1", port: 9999, protocol: "grpc"},
+				},
 			},
 		}
 		cli, err = p.pickRemote(context.Background(), "/svc/method")
@@ -843,13 +922,16 @@ func TestPolarisPickerRoutingAndPickerHelpers(t *testing.T) {
 			t.Fatalf("processRouters() resp = %#v, want filtered", routed)
 		}
 		req := router.routerReqs[0].ProcessRoutersRequest
-		if req.SourceService.Service != "src-svc" || req.SourceService.Namespace != "src-ns" || req.Method != "/svc/method" {
+		if req.SourceService.Service != "src-svc" || req.SourceService.Namespace != "src-ns" ||
+			req.Method != "/svc/method" {
 			t.Fatalf("router req = %#v", req)
 		}
-		if req.Timeout == nil || *req.Timeout != 5*time.Millisecond || req.RetryCount == nil || *req.RetryCount != 2 {
+		if req.Timeout == nil || *req.Timeout != 5*time.Millisecond || req.RetryCount == nil ||
+			*req.RetryCount != 2 {
 			t.Fatalf("router timeout/retry = %#v", req)
 		}
-		if got := quotaArgsToMap(req.Arguments); got["tenant"] != "gold" || got["region"] != "ap-sh" {
+		if got := quotaArgsToMap(req.Arguments); got["tenant"] != "gold" ||
+			got["region"] != "ap-sh" {
 			t.Fatalf("router args = %#v", got)
 		}
 
@@ -857,7 +939,7 @@ func TestPolarisPickerRoutingAndPickerHelpers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("processLoadBalance() error = %v", err)
 		}
-		if one.GetInstance() == nil || router.lbReqs[0].ProcessLoadBalanceRequest.LbPolicy != "hash" {
+		if one.GetInstance() == nil || router.lbReqs[0].LbPolicy != "hash" {
 			t.Fatalf("load balance req/resp = %#v / %#v", router.lbReqs[0], one)
 		}
 	})
@@ -874,7 +956,8 @@ func TestPolarisPickResultReportNoopsAndSuccess(t *testing.T) {
 		cb:             cb,
 	}
 	pr.Report(nil)
-	if len(cb.reports) != 1 || cb.reports[0].RetStatus != model.RetSuccess || cb.reports[0].RetCode != "0" {
+	if len(cb.reports) != 1 || cb.reports[0].RetStatus != model.RetSuccess ||
+		cb.reports[0].RetCode != "0" {
 		t.Fatalf("success report = %#v", cb.reports)
 	}
 }

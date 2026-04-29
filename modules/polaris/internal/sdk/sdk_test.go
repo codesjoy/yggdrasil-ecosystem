@@ -35,29 +35,37 @@ func (c *testSDKContext) Destroy() {}
 func (c *testSDKContext) IsDestroyed() bool {
 	return false
 }
+
 func (c *testSDKContext) GetConfig() polariscfg.Configuration {
 	return c.cfg
 }
+
 func (c *testSDKContext) GetPlugins() polarisplugin.Manager {
 	return nil
 }
+
 func (c *testSDKContext) GetEngine() model.Engine {
 	return nil
 }
+
 func (c *testSDKContext) GetValueContext() model.ValueContext {
 	return nil
 }
 
 type testProviderAPI struct{}
 
-func (testProviderAPI) RegisterInstance(*polaris.InstanceRegisterRequest) (*model.InstanceRegisterResponse, error) {
+func (testProviderAPI) RegisterInstance(
+	*polaris.InstanceRegisterRequest,
+) (*model.InstanceRegisterResponse, error) {
 	return &model.InstanceRegisterResponse{}, nil
 }
 func (testProviderAPI) Deregister(*polaris.InstanceDeRegisterRequest) error { return nil }
 
 type testConsumerAPI struct{}
 
-func (testConsumerAPI) GetInstances(*polaris.GetInstancesRequest) (*model.InstancesResponse, error) {
+func (testConsumerAPI) GetInstances(
+	*polaris.GetInstancesRequest,
+) (*model.InstancesResponse, error) {
 	return &model.InstancesResponse{}, nil
 }
 
@@ -79,10 +87,15 @@ func (testCircuitBreakerAPI) Report(*model.ResourceStat) error                 {
 
 type testRouterAPI struct{}
 
-func (testRouterAPI) ProcessRouters(*polaris.ProcessRoutersRequest) (*model.InstancesResponse, error) {
+func (testRouterAPI) ProcessRouters(
+	*polaris.ProcessRoutersRequest,
+) (*model.InstancesResponse, error) {
 	return &model.InstancesResponse{}, nil
 }
-func (testRouterAPI) ProcessLoadBalance(*polaris.ProcessLoadBalanceRequest) (*model.OneInstanceResponse, error) {
+
+func (testRouterAPI) ProcessLoadBalance(
+	*polaris.ProcessLoadBalanceRequest,
+) (*model.OneInstanceResponse, error) {
 	return &model.OneInstanceResponse{}, nil
 }
 
@@ -136,7 +149,10 @@ func TestApplyTokenAndConfigAddressesToConfig(t *testing.T) {
 	if got := cfg.GetConfigFile().GetConfigConnectorConfig().GetToken(); got != "token" {
 		t.Fatalf("config token = %q, want token", got)
 	}
-	if got := cfg.GetConfigFile().GetConfigConnectorConfig().GetAddresses(); !reflect.DeepEqual(got, []string{"127.0.0.1:8093"}) {
+	if got := cfg.GetConfigFile().GetConfigConnectorConfig().GetAddresses(); !reflect.DeepEqual(
+		got,
+		[]string{"127.0.0.1:8093"},
+	) {
 		t.Fatalf("config addresses = %#v", got)
 	}
 }
@@ -147,10 +163,16 @@ func TestResolveSDKConfigAddressesUsesExplicitOrConfiguredValues(t *testing.T) {
 	})
 	t.Cleanup(func() { ConfigureConfigLoader(nil) })
 
-	if got := ResolveSDKConfigAddresses("owner", "", nil); !reflect.DeepEqual(got, []string{"owner:8093"}) {
+	if got := ResolveSDKConfigAddresses("owner", "", nil); !reflect.DeepEqual(
+		got,
+		[]string{"owner:8093"},
+	) {
 		t.Fatalf("ResolveSDKConfigAddresses() = %#v", got)
 	}
-	if got := ResolveSDKConfigAddresses("owner", "", []string{"explicit:8093"}); !reflect.DeepEqual(got, []string{"explicit:8093"}) {
+	if got := ResolveSDKConfigAddresses("owner", "", []string{"explicit:8093"}); !reflect.DeepEqual(
+		got,
+		[]string{"explicit:8093"},
+	) {
 		t.Fatalf("ResolveSDKConfigAddresses(explicit) = %#v", got)
 	}
 }
@@ -185,7 +207,10 @@ func TestClientHolderInitContextUsesConfigFileAndCachesResult(t *testing.T) {
 		if got := c.GetConfigFile().GetConfigConnectorConfig().GetToken(); got != "token" {
 			t.Fatalf("config token = %q, want token", got)
 		}
-		if got := c.GetConfigFile().GetConfigConnectorConfig().GetAddresses(); !reflect.DeepEqual(got, []string{"127.0.0.1:8093"}) {
+		if got := c.GetConfigFile().GetConfigConnectorConfig().GetAddresses(); !reflect.DeepEqual(
+			got,
+			[]string{"127.0.0.1:8093"},
+		) {
 			t.Fatalf("config addresses = %#v", got)
 		}
 		return wantCtx, nil
@@ -288,7 +313,10 @@ func TestClientHolderInitContextHandlesAllConstructionBranches(t *testing.T) {
 				if got := c.GetGlobal().GetServerConnector().GetToken(); got != "token" {
 					t.Fatalf("global token = %q, want token", got)
 				}
-				if got := c.GetConfigFile().GetConfigConnectorConfig().GetAddresses(); !reflect.DeepEqual(got, []string{"127.0.0.1:8093"}) {
+				if got := c.GetConfigFile().GetConfigConnectorConfig().GetAddresses(); !reflect.DeepEqual(
+					got,
+					[]string{"127.0.0.1:8093"},
+				) {
 					t.Fatalf("config addresses = %#v", got)
 				}
 				return wantCtx, nil
@@ -337,10 +365,10 @@ func TestClientHolderInitContextHandlesAllConstructionBranches(t *testing.T) {
 
 func TestClientHolderAPIsReuseContextAndCacheErrors(t *testing.T) {
 	type apiCase struct {
-		name             string
-		call             func(*ClientHolder) (any, error)
-		setConstructor   func(int)
-		wantConstructorN int
+		name           string
+		call           func(*ClientHolder) (any, error)
+		setConstructor func(int)
+		// wantConstructorN int
 	}
 
 	tests := []apiCase{
@@ -577,13 +605,22 @@ func TestEffectiveConfigTimeoutHelpersUseConfiguredPaths(t *testing.T) {
 	restoreSDKGlobals(t)
 
 	ConfigureConfigLoader(func(string) Config {
-		return Config{Addresses: []string{"127.0.0.1:8091"}, ConfigAddress: []string{"127.0.0.1:8093"}}
+		return Config{
+			Addresses:     []string{"127.0.0.1:8091"},
+			ConfigAddress: []string{"127.0.0.1:8093"},
+		}
 	})
 
-	if got := ResolveSDKAddresses("owner", "", nil); !reflect.DeepEqual(got, []string{"127.0.0.1:8091"}) {
+	if got := ResolveSDKAddresses("owner", "", nil); !reflect.DeepEqual(
+		got,
+		[]string{"127.0.0.1:8091"},
+	) {
 		t.Fatalf("ResolveSDKAddresses() = %#v", got)
 	}
-	if got := ResolveSDKConfigAddresses("owner", "", nil); !reflect.DeepEqual(got, []string{"127.0.0.1:8093"}) {
+	if got := ResolveSDKConfigAddresses("owner", "", nil); !reflect.DeepEqual(
+		got,
+		[]string{"127.0.0.1:8093"},
+	) {
 		t.Fatalf("ResolveSDKConfigAddresses() = %#v", got)
 	}
 
