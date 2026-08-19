@@ -13,6 +13,7 @@ shared contributor workflow across modules.
 - `modules/*/examples`: runnable sample apps and configs for the owning module.
 - `scripts/make-rules`: shared Make targets used by the root `Makefile`.
 - `scripts/hooks`: commit and branch policy checks used by local hooks and CI.
+- `third_party/etcd-api`: patched etcd API used when Polaris and etcd share a process.
 - `go.work`: generated workspace file for local multi-module development.
 
 ## Modules
@@ -28,6 +29,21 @@ shared contributor workflow across modules.
 
 Each module README is the source of truth for setup, configuration, and
 module-specific examples.
+
+### Polaris and etcd compatibility
+
+Polaris Specification and the upstream etcd API both register a protobuf file
+as `auth.proto`. Applications that load the Polaris and etcd modules in the
+same process must replace etcd API `v3.6.8` with the compatibility module:
+
+```go
+replace go.etcd.io/etcd/api/v3 v3.6.8 => github.com/codesjoy/yggdrasil-ecosystem/third_party/etcd-api/v3 v3.6.8-codesjoy.1
+```
+
+This directive must be present in the application root module because Go does
+not propagate `replace` directives from dependencies. See
+[`third_party/etcd-api/README.codesjoy.md`](./third_party/etcd-api/README.codesjoy.md)
+for the patch scope and regeneration procedure.
 
 ## Quick Start
 
