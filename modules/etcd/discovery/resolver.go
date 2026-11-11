@@ -108,6 +108,7 @@ func (r *Resolver) AddWatch(serviceName string, watcher yresolver.Client) error 
 	ws[watcher] = struct{}{}
 	_, running := r.cancels[serviceName]
 	if !running {
+		//nolint:gosec // G118: cancel is retained in r.cancels and invoked by DelWatch.
 		ctx, cancel := context.WithCancel(context.Background())
 		r.cancels[serviceName] = cancel
 		go r.watchLoop(ctx, serviceName)

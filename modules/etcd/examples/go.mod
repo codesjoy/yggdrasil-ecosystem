@@ -6,13 +6,13 @@ replace github.com/codesjoy/yggdrasil-ecosystem/modules/etcd/v3 => ../
 
 require (
 	github.com/codesjoy/yggdrasil-ecosystem/modules/etcd/v3 v3.0.0-00010101000000-000000000000
-	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2
+	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.6
 	go.etcd.io/etcd/client/v3 v3.6.8
 )
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622 // indirect
+	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260812100337-f4b6f4ac7d17 // indirect
 	github.com/codesjoy/pkg/utils v0.0.0-20260227125603-faf7bfdf00a7 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
@@ -35,10 +35,8 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
 	golang.org/x/net v0.51.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
-	google.golang.org/genproto v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260223185530-2f722ef697dc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260223185530-2f722ef697dc // indirect
 	google.golang.org/grpc v1.80.0 // indirect

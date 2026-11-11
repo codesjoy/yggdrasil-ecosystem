@@ -137,9 +137,14 @@ func TestClusterAndEndpointParsingEdges(t *testing.T) {
 	if got := parseRateLimiter(nil); got != nil {
 		t.Fatalf("parseRateLimiter(nil) = %#v, want nil", got)
 	}
-	if got := parseRateLimiter(&corev3.Metadata{
-		FilterMetadata: map[string]*structpb.Struct{rateLimitMetadataKey: {Fields: map[string]*structpb.Value{}}},
-	}); got != nil {
+	metadata := &corev3.Metadata{
+		FilterMetadata: map[string]*structpb.Struct{
+			rateLimitMetadataKey: {
+				Fields: map[string]*structpb.Value{},
+			},
+		},
+	}
+	if got := parseRateLimiter(metadata); got != nil {
 		t.Fatalf("parseRateLimiter(empty fields) = %#v, want nil", got)
 	}
 	if got := numberValue(nil); got != 0 {

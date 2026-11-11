@@ -313,10 +313,8 @@ func TestClientHolderInitContextHandlesAllConstructionBranches(t *testing.T) {
 				if got := c.GetGlobal().GetServerConnector().GetToken(); got != "token" {
 					t.Fatalf("global token = %q, want token", got)
 				}
-				if got := c.GetConfigFile().GetConfigConnectorConfig().GetAddresses(); !reflect.DeepEqual(
-					got,
-					[]string{"127.0.0.1:8093"},
-				) {
+				got := c.GetConfigFile().GetConfigConnectorConfig().GetAddresses()
+				if !reflect.DeepEqual(got, []string{"127.0.0.1:8093"}) {
 					t.Fatalf("config addresses = %#v", got)
 				}
 				return wantCtx, nil

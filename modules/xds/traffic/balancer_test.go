@@ -695,10 +695,8 @@ func TestPickerBehaviors(t *testing.T) {
 	t.Run("no route", func(t *testing.T) {
 		instance := newDeterministicBalancer(t, &recordingBalancerClient{})
 		picker := instance.buildPicker()
-		if _, err := picker.Next(balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/Method"}); !errors.Is(
-			err,
-			balancer.ErrNoAvailableInstance,
-		) {
+		info := balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/Method"}
+		if _, err := picker.Next(info); !errors.Is(err, balancer.ErrNoAvailableInstance) {
 			t.Fatalf("Next() error = %v, want ErrNoAvailableInstance", err)
 		}
 	})

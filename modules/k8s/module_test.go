@@ -215,7 +215,10 @@ func TestModuleHelperFunctionsAndFallbacks(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	if err := mod.Init(context.Background(), config.NewView("", config.NewSnapshot(map[string]any{}))); err != nil {
+	if err := mod.Init(
+		context.Background(),
+		config.NewView("", config.NewSnapshot(map[string]any{})),
+	); err != nil {
 		t.Fatalf("Init() with empty view error = %v", err)
 	}
 	badView := config.NewView("yggdrasil", config.NewSnapshot(map[string]any{

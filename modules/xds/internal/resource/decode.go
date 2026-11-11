@@ -383,8 +383,9 @@ func parseRouteMatch(match *routeType.RouteMatch) *RouteMatch {
 		case *routeType.HeaderMatcher_ExactMatch:
 			headerMatcher.ExactMatch = specifier.ExactMatch //nolint:staticcheck
 		case *routeType.HeaderMatcher_SafeRegexMatch:
-			if specifier.SafeRegexMatch != nil && specifier.SafeRegexMatch.Regex != "" { //nolint:staticcheck
-				if compiled, err := regexp.Compile(specifier.SafeRegexMatch.Regex); err == nil { //nolint:staticcheck
+			regexMatch := specifier.SafeRegexMatch //nolint:staticcheck
+			if regexMatch != nil && regexMatch.Regex != "" {
+				if compiled, err := regexp.Compile(regexMatch.Regex); err == nil {
 					headerMatcher.RegexMatch = compiled
 				}
 			}

@@ -5,9 +5,9 @@ go 1.25.7
 replace github.com/codesjoy/yggdrasil-ecosystem/modules/polaris/v3 => ../
 
 require (
-	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622
+	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260812100337-f4b6f4ac7d17
 	github.com/codesjoy/yggdrasil-ecosystem/modules/polaris/v3 v3.0.0-00010101000000-000000000000
-	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2
+	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.6
 	github.com/polarismesh/polaris-go v1.6.1
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260122232226-8e98ce8d340d
 	google.golang.org/protobuf v1.36.11
@@ -48,10 +48,8 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/net v0.49.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
-	google.golang.org/genproto v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/grpc v1.80.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

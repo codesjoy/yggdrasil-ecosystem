@@ -15,7 +15,6 @@
 package resolver
 
 import (
-	"context"
 	"sync"
 
 	xdsresource "github.com/codesjoy/yggdrasil-ecosystem/modules/xds/v3/internal/resource"
@@ -36,8 +35,6 @@ type adsSubscriptionClient interface {
 
 type xdsCore struct {
 	cfg       Config
-	ctx       context.Context
-	cancel    context.CancelFunc
 	mu        sync.RWMutex
 	apps      map[string]*appInfo
 	listeners map[string]*xdsresource.ListenerSnapshot
@@ -61,12 +58,8 @@ var adsClientFactory = func(
 
 // NewResolver creates a new xDS resolver.
 func NewResolver(_ string, cfg Config) (yresolver.Resolver, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	core := &xdsCore{
 		cfg:       cfg,
-		ctx:       ctx,
-		cancel:    cancel,
 		apps:      make(map[string]*appInfo),
 		listeners: make(map[string]*xdsresource.ListenerSnapshot),
 		routes:    make(map[string]*xdsresource.RouteSnapshot),

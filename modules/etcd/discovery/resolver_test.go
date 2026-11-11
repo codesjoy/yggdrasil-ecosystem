@@ -52,7 +52,9 @@ func TestNewResolverTypeAndHelpers(t *testing.T) {
 	if got := res.servicePrefix("svc"); got != "/yggdrasil/registry/default/svc" {
 		t.Fatalf("servicePrefix() = %q", got)
 	}
-	if got := instanceKey("default", "svc", "v1", "grpc", "127.0.0.1:9000"); got != "default/svc/v1/grpc/127.0.0.1:9000" {
+	if got := instanceKey(
+		"default", "svc", "v1", "grpc", "127.0.0.1:9000",
+	); got != "default/svc/v1/grpc/127.0.0.1:9000" {
 		t.Fatalf("instanceKey() = %q", got)
 	}
 	if allow := toProtocolAllow(nil); !allow["grpc"] || !allow["http"] {
@@ -157,10 +159,14 @@ func TestResolverFetchStateErrorAndNamespaceFiltering(t *testing.T) {
 	}
 
 	recordA, _ := json.Marshal(instanceRecord{
-		Name: "svc", Namespace: "ns-a", Endpoints: []endpointRecord{{Scheme: "grpc", Address: "a:1"}},
+		Name:      "svc",
+		Namespace: "ns-a",
+		Endpoints: []endpointRecord{{Scheme: "grpc", Address: "a:1"}},
 	})
 	recordB, _ := json.Marshal(instanceRecord{
-		Name: "svc", Namespace: "ns-b", Endpoints: []endpointRecord{{Scheme: "grpc", Address: "b:1"}},
+		Name:      "svc",
+		Namespace: "ns-b",
+		Endpoints: []endpointRecord{{Scheme: "grpc", Address: "b:1"}},
 	})
 	res.client = &testutil.FakeClient{
 		GetFunc: func(context.Context, string, ...clientv3.OpOption) (*clientv3.GetResponse, error) {
@@ -218,7 +224,9 @@ func TestResolverAddAndDelWatch(t *testing.T) {
 
 func TestResolverWatchLoop(t *testing.T) {
 	record, err := json.Marshal(instanceRecord{
-		Name: "svc", Namespace: "default", Endpoints: []endpointRecord{{Scheme: "grpc", Address: "127.0.0.1:9000"}},
+		Name:      "svc",
+		Namespace: "default",
+		Endpoints: []endpointRecord{{Scheme: "grpc", Address: "127.0.0.1:9000"}},
 	})
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)

@@ -674,13 +674,20 @@ func TestEndpointSlicesToStateAndSlicePortValueFilters(t *testing.T) {
 	if _, ok := r.slicePortValue(discoveryv1.EndpointPort{}); ok {
 		t.Fatal("slicePortValue() expected false for nil port")
 	}
-	if _, ok := r.slicePortValue(discoveryv1.EndpointPort{Name: &portNameHTTP, Port: &port9090}); ok {
+	if _, ok := r.slicePortValue(discoveryv1.EndpointPort{
+		Name: &portNameHTTP,
+		Port: &port9090,
+	}); ok {
 		t.Fatal("slicePortValue() expected false for mismatched port name")
 	}
-	if _, ok := r.slicePortValue(discoveryv1.EndpointPort{Name: &portNameGRPC, Port: &port8080}); ok {
+	if _, ok := r.slicePortValue(
+		discoveryv1.EndpointPort{Name: &portNameGRPC, Port: &port8080},
+	); ok {
 		t.Fatal("slicePortValue() expected false for mismatched port number")
 	}
-	if got, ok := r.slicePortValue(discoveryv1.EndpointPort{Name: &portNameGRPC, Port: &port9090}); !ok ||
+	if got, ok := r.slicePortValue(
+		discoveryv1.EndpointPort{Name: &portNameGRPC, Port: &port9090},
+	); !ok ||
 		got != 9090 {
 		t.Fatalf("slicePortValue() = (%d, %v), want (9090, true)", got, ok)
 	}

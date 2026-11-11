@@ -68,7 +68,8 @@ func TestNew(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	if err := validator.Validate(newEmailRequest(t, emailRequestDescriptor(t), "user@example.com")); err != nil {
+	request := newEmailRequest(t, emailRequestDescriptor(t), "user@example.com")
+	if err := validator.Validate(request); err != nil {
 		t.Fatalf("validator.Validate(valid) error = %v", err)
 	}
 }
@@ -298,7 +299,9 @@ func TestUnaryServerInterceptor(t *testing.T) {
 		if got := len(violations.GetViolations()); got != 1 {
 			t.Fatalf("violations len = %d, want 1", got)
 		}
-		if got := bufprotovalidate.FieldPathString(violations.GetViolations()[0].GetField()); got != "email" {
+		if got := bufprotovalidate.FieldPathString(
+			violations.GetViolations()[0].GetField(),
+		); got != "email" {
 			t.Fatalf("violation field path = %q, want email", got)
 		}
 	})
@@ -353,7 +356,8 @@ func TestStreamServerInterceptor(t *testing.T) {
 				if err := ss.RecvMsg(msg); err != nil {
 					return err
 				}
-				if got := msg.Get(desc.Fields().ByName(protoreflect.Name("email"))).String(); got != "user@example.com" {
+				if got := msg.Get(desc.Fields().ByName(protoreflect.Name("email"))).
+					String(); got != "user@example.com" {
 					return fmt.Errorf("received email = %q, want user@example.com", got)
 				}
 				return nil

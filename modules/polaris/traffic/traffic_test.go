@@ -203,10 +203,11 @@ func TestBuildPolarisRateLimitUnaryCoversControlFlow(t *testing.T) {
 			return map[string]any{"rate_limit": map[string]any{"enable": false}}
 		}, "svc")
 		called := 0
-		if err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
+		invoke := func(context.Context, string, any, any) error {
 			called++
 			return nil
-		}); err != nil {
+		}
+		if err := unary(context.Background(), "/svc/method", nil, nil, invoke); err != nil {
 			t.Fatalf("disabled unary error = %v", err)
 		}
 		if called != 1 {
@@ -222,9 +223,15 @@ func TestBuildPolarisRateLimitUnaryCoversControlFlow(t *testing.T) {
 		unary := buildPolarisRateLimitUnary(func(string) map[string]any {
 			return map[string]any{"rate_limit": map[string]any{"enable": true}}
 		}, "svc")
-		if err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			return nil
-		}); !errors.Is(
+		if err := unary(
+			context.Background(),
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				return nil
+			},
+		); !errors.Is(
 			err,
 			wantErr,
 		) {
@@ -253,10 +260,16 @@ func TestBuildPolarisRateLimitUnaryCoversControlFlow(t *testing.T) {
 
 		ctx := metadata.WithOutContext(context.Background(), metadata.MD{"region": {"ap-sh"}})
 		invoked := 0
-		if err := unary(ctx, "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			invoked++
-			return nil
-		}); err != nil {
+		if err := unary(
+			ctx,
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				invoked++
+				return nil
+			},
+		); err != nil {
 			t.Fatalf("unary error = %v", err)
 		}
 		if invoked != 1 {
@@ -287,9 +300,15 @@ func TestBuildPolarisRateLimitUnaryCoversControlFlow(t *testing.T) {
 		}
 
 		api.err = errors.New("quota failed")
-		if err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			return nil
-		}); err == nil ||
+		if err := unary(
+			context.Background(),
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				return nil
+			},
+		); err == nil ||
 			err.Error() != "quota failed" {
 			t.Fatalf("quota error = %v", err)
 		}
@@ -378,10 +397,16 @@ func TestBuildPolarisCircuitBreakerUnaryCoversControlFlow(t *testing.T) {
 			return map[string]any{"circuit_breaker": map[string]any{"enable": false}}
 		}, "svc")
 		called := 0
-		if err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			called++
-			return nil
-		}); err != nil {
+		if err := unary(
+			context.Background(),
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				called++
+				return nil
+			},
+		); err != nil {
 			t.Fatalf("disabled unary error = %v", err)
 		}
 		if called != 1 {
@@ -397,9 +422,15 @@ func TestBuildPolarisCircuitBreakerUnaryCoversControlFlow(t *testing.T) {
 		unary := buildPolarisCircuitBreakerUnary(func(string) map[string]any {
 			return map[string]any{"circuit_breaker": map[string]any{"enable": true}}
 		}, "svc")
-		if err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			return nil
-		}); !errors.Is(
+		if err := unary(
+			context.Background(),
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				return nil
+			},
+		); !errors.Is(
 			err,
 			wantErr,
 		) {
@@ -441,9 +472,15 @@ func TestBuildPolarisCircuitBreakerUnaryCoversControlFlow(t *testing.T) {
 		}, "svc")
 
 		api.checkErr = errors.New("check failed")
-		if err := unary(context.Background(), "/svc/method", nil, nil, func(context.Context, string, any, any) error {
-			return nil
-		}); err == nil ||
+		if err := unary(
+			context.Background(),
+			"/svc/method",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				return nil
+			},
+		); err == nil ||
 			err.Error() != "check failed" {
 			t.Fatalf("check error = %v", err)
 		}
@@ -472,9 +509,15 @@ func TestBuildPolarisCircuitBreakerUnaryCoversControlFlow(t *testing.T) {
 		}
 
 		api.reports = nil
-		if err := unary(context.Background(), "/svc/ok", nil, nil, func(context.Context, string, any, any) error {
-			return nil
-		}); err != nil {
+		if err := unary(
+			context.Background(),
+			"/svc/ok",
+			nil,
+			nil,
+			func(context.Context, string, any, any) error {
+				return nil
+			},
+		); err != nil {
 			t.Fatalf("success invoke error = %v", err)
 		}
 		if len(api.reports) != 1 || api.reports[0].RetStatus != model.RetSuccess ||
@@ -667,7 +710,9 @@ func TestPolarisPickerRateLimitAndCircuitBreakerBranches(t *testing.T) {
 			},
 			limitErr: errors.New("limit init failed"),
 		}
-		if _, err := p.Next(balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/method"}); err == nil ||
+		if _, err := p.Next(
+			balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/method"},
+		); err == nil ||
 			err.Error() != "limit init failed" {
 			t.Fatalf("Next() rate limit error = %v", err)
 		}
@@ -679,7 +724,9 @@ func TestPolarisPickerRateLimitAndCircuitBreakerBranches(t *testing.T) {
 			},
 			cbErr: errors.New("cb init failed"),
 		}
-		if _, err := p.Next(balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/method"}); err == nil ||
+		if _, err := p.Next(
+			balancer.RPCInfo{Ctx: context.Background(), Method: "/svc/method"},
+		); err == nil ||
 			err.Error() != "cb init failed" {
 			t.Fatalf("Next() cb error = %v", err)
 		}

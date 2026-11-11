@@ -5,9 +5,9 @@ go 1.25.7
 replace github.com/codesjoy/yggdrasil-ecosystem/modules/xds/v3 => ../
 
 require (
-	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260225033528-924cf61d0622
+	github.com/codesjoy/pkg/basic/xerror v0.0.0-20260812100337-f4b6f4ac7d17
 	github.com/codesjoy/yggdrasil-ecosystem/modules/xds/v3 v3.0.0-00010101000000-000000000000
-	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.2
+	github.com/codesjoy/yggdrasil/v3 v3.0.0-rc.6
 	github.com/envoyproxy/go-control-plane v0.14.0
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/fsnotify/fsnotify v1.9.0
@@ -36,10 +36,8 @@ require (
 	go.opentelemetry.io/otel/metric v1.39.0 // indirect
 	go.opentelemetry.io/otel/trace v1.39.0 // indirect
 	golang.org/x/net v0.49.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
-	google.golang.org/genproto v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260122232226-8e98ce8d340d // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )

@@ -174,6 +174,7 @@ func (r *Resolver) AddWatch(appName string, watcher yresolver.Client) error {
 	ws[watcher] = struct{}{}
 	_, running := r.cancels[appName]
 	if !running {
+		//nolint:gosec // G118: cancel is retained in r.cancels and invoked by DelWatch.
 		ctx, cancel := context.WithCancel(context.Background())
 		r.cancels[appName] = cancel
 		go r.watchLoop(ctx, appName)
